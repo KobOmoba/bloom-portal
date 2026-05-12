@@ -125,17 +125,17 @@
     <div class="login-card">
         <h3 style="text-align:center; margin-bottom:1rem;">🔐 AariNAT Portal</h3>
         <label>School ID</label>
-        <input type="text" id="loginSchoolId" placeholder="e.g. bloom‑abk‑001">
+        <input type="text" id="loginSchoolId" placeholder="e.g. BLOOM-ABK-0042">
         <label>Email</label>
         <input type="email" id="loginEmail" placeholder="principal@school.edu.ng">
         <label>Password</label>
         <input type="password" id="loginPassword" placeholder="••••••••">
         <button class="btn-brand" onclick="login()">Log In</button>
-        <p style="font-size:0.7rem; text-align:center; margin-top:1rem; color:var(--sub);">First time? Enter any School ID, email &amp; password.</p>
+        <p style="font-size:0.7rem; text-align:center; margin-top:1rem; color:var(--sub);">First time? Use the School ID and password from your agent.</p>
     </div>
 </div>
 
-<!-- MAIN APP -->
+<!-- MAIN APP (hidden until login) -->
 <div id="mainApp" style="display:none;">
     <div class="header">
         <div>
@@ -259,9 +259,7 @@
 </div>
 
 <script>
-    // ==========================================
-    // DATA STORE ABSTRACTION (Phase‑2‑ready)
-    // ==========================================
+    // ---- DATA STORE ----
     const DataStore = {
         _schoolId: function() { return localStorage.getItem('aarinat_school_id') || 'default'; },
         save: function(key, data) { localStorage.setItem(`aar_${this._schoolId()}_${key}`, JSON.stringify(data)); },
@@ -278,43 +276,28 @@
         updateStudents: function(students) { this.save('students', students); }
     };
 
-    // ==========================================
-    // NAVIGATION
-    // ==========================================
-    function switchSection(name) {
-        document.querySelectorAll('.app-section').forEach(s => s.classList.remove('active'));
-        document.getElementById(`section-${name}`).classList.add('active');
-        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-        document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-        if (name === 'revenue') renderDashboard();
-        if (name === 'staff') renderStaff();
-        if (name === 'students') renderSetup();
-    }
-
-    // ==========================================
-    // AUTHENTICATION
-    // ==========================================
+    // ---- AUTH ----
     function login() {
         const schoolId = document.getElementById('loginSchoolId').value.trim();
         const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value.trim();
         if (!schoolId || !email || !password) return alert('Complete all fields.');
+        
         localStorage.setItem('aarinat_school_id', schoolId);
-        localStorage.setItem('aarinat_user_email', email);
         const data = DataStore.getSchoolData();
-        const user = data.staff.find(s => s.email === email && s.password === password);
-        if (!user) {
-            if (data.staff.length === 0) {
-                // first login — seed a default principal
-                const seed = [{ name:'Principal', phone:'', email, password, role:'Principal' }];
-                DataStore.updateStaff(seed);
-                localStorage.setItem('aarinat_user_role', 'Principal');
-            } else {
-                return alert('Invalid credentials. Check email/password.');
-            }
-        } else {
-            localStorage.setItem('aarinat_user_role', user.role);
+        let user = data.staff.find(s => s.email === email && s.password === password);
+        
+        // If no staff exists and password matches preset, seed a principal
+        if (!user && data.staff.length === 0 && password === 'aarinat2024') {
+            const newUser = { name:'Principal', phone:'', email, password, role:'Principal' };
+            DataStore.updateStaff([newUser]);
+            user = newUser;
         }
+        
+        if (!user) return alert('Invalid credentials. Check School ID, email, and password.');
+        
+        localStorage.setItem('aarinat_user_email', email);
+        localStorage.setItem('aarinat_user_role', user.role);
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
         initPortal();
@@ -326,28 +309,32 @@
         location.reload();
     }
 
-    // ==========================================
-    // INIT
-    // ==========================================
     function initPortal() {
         const data = DataStore.getSchoolData();
-        const plan = data.config.plan;
-        document.getElementById('planBadge').textContent = plan.toUpperCase();
-        document.getElementById('planBadge').className = `plan-badge plan-${plan}`;
+        document.getElementById('planBadge').textContent = data.config.plan.toUpperCase();
+        document.getElementById('planBadge').className = `plan-badge plan-${data.config.plan}`;
         document.getElementById('headerSchoolId').textContent = localStorage.getItem('aarinat_school_id');
         switchSection('revenue');
     }
 
-    // ==========================================
-    // STAFF MANAGEMENT
-    // ==========================================
+    // ---- NAVIGATION ----
+    function switchSection(name) {
+        document.querySelectorAll('.app-section').forEach(s => s.classList.remove('active'));
+        document.getElementById(`section-${name}`).classList.add('active');
+        document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+        document.querySelector(`[data-tab="${name}"]`).classList.add('active');
+        if (name === 'revenue') renderDashboard();
+        if (name === 'staff') renderStaff();
+        if (name === 'students') renderSetup();
+    }
+
+    // ---- STAFF (unchanged from earlier – keep all existing functions) ----
     function renderStaff() {
         const data = DataStore.getSchoolData();
         const staff = data.staff;
         const plan = data.config.plan;
         const limit = plan === 'premium' ? '∞' : 3;
         document.getElementById('staffCount').textContent = `${staff.length}/${limit} Used`;
-
         const container = document.getElementById('staffListContainer');
         container.innerHTML = staff.map((s, idx) => `
             <div class="staff-row">
@@ -358,7 +345,6 @@
                 <button class="action-btn" style="background:var(--danger); color:white;" onclick="deleteStaff(${idx})">🗑️</button>
             </div>
         `).join('');
-
         if (plan === 'basic' && staff.length >= 3) {
             document.getElementById('addStaffForm').style.display = 'none';
             document.getElementById('upgradePrompt').style.display = 'block';
@@ -367,7 +353,6 @@
             document.getElementById('upgradePrompt').style.display = 'none';
         }
     }
-
     function addStaff() {
         const name = document.getElementById('newStaffName').value.trim();
         const phone = document.getElementById('newStaffPhone').value.trim();
@@ -382,14 +367,12 @@
         ['newStaffName','newStaffPhone','newStaffEmail','newStaffPassword'].forEach(id => document.getElementById(id).value = '');
         renderStaff();
     }
-
     function deleteStaff(idx) {
         const data = DataStore.getSchoolData();
         data.staff.splice(idx, 1);
         DataStore.updateStaff(data.staff);
         renderStaff();
     }
-
     function upgradeToPremium() {
         const data = DataStore.getSchoolData();
         data.config.plan = 'premium';
@@ -398,16 +381,13 @@
         switchSection('staff');
     }
 
-    // ==========================================
-    // STUDENT SETUP
-    // ==========================================
+    // ---- STUDENT SETUP (unchanged) ----
     function renderSetup() {
         const data = DataStore.getSchoolData();
         document.getElementById('setupCount').textContent = data.students.length;
         document.getElementById('setupCountWrapper').style.display = 'block';
         if (data.config.fee > 0) document.getElementById('setupFee').value = data.config.fee;
     }
-
     function handleSetupCSV(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -429,7 +409,6 @@
         };
         reader.readAsText(file);
     }
-
     function addManualStudent() {
         const name = document.getElementById('manualName').value.trim();
         const phone = document.getElementById('manualPhone').value.trim();
@@ -441,7 +420,6 @@
         document.getElementById('manualPhone').value = '';
         renderSetup();
     }
-
     function saveSetup() {
         const fee = parseFloat(document.getElementById('setupFee').value);
         if (!fee || fee <= 0) return alert('Set a valid termly fee.');
@@ -454,9 +432,7 @@
         switchSection('revenue');
     }
 
-    // ==========================================
-    // REVENUE DASHBOARD
-    // ==========================================
+    // ---- REVENUE DASHBOARD (unchanged) ----
     function renderDashboard() {
         const data = DataStore.getSchoolData();
         const students = data.students;
@@ -492,21 +468,18 @@
         updateSummary(students.length, totalExp, totalCol, totalExp - totalCol);
         updateChart(totalCol, totalExp);
     }
-
     function updateSummary(count, exp, col, out) {
         document.getElementById('totalStudents').textContent = count;
         document.getElementById('totalExpected').textContent = '₦' + exp.toLocaleString();
         document.getElementById('totalCollected').textContent = '₦' + col.toLocaleString();
         document.getElementById('totalOutstanding').textContent = '₦' + out.toLocaleString();
     }
-
     function updateChart(col, exp) {
         const pct = exp > 0 ? Math.round((col / exp) * 100) : 0;
         document.getElementById('progressPercent').textContent = pct + '%';
         document.getElementById('progressFill').style.width = pct + '%';
         document.getElementById('progressFill').textContent = pct > 5 ? pct + '%' : '';
     }
-
     function handleBulkPayment(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -533,13 +506,11 @@
         };
         reader.readAsText(file);
     }
-
     function sendReminder(idx) {
         const s = DataStore.getSchoolData().students[idx];
         const out = s.totalFee - (s.paid || 0);
         window.open(`https://wa.me/${s.phone}?text=Dear%20Parent%2C%0A%0A*${encodeURIComponent(s.name)}*%20has%20an%20outstanding%20fee%20of%20*₦${out.toLocaleString()}*.%0A%0APlease%20make%20payment.%0A%0AThank%20you.%0A%E2%80%93%20School%20Management`, '_blank');
     }
-
     let payIdx = null;
     function openPaymentModal(idx) { payIdx = idx; document.getElementById('paymentAmount').value = ''; document.getElementById('paymentModal').style.display = 'flex'; }
     function recordPayment() {
@@ -552,12 +523,8 @@
         renderDashboard();
     }
     function closeModal() { document.getElementById('paymentModal').style.display = 'none'; payIdx = null; }
-
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-    // ==========================================
-    // STARTUP
-    // ==========================================
     window.addEventListener('DOMContentLoaded', () => {
         if (localStorage.getItem('aarinat_school_id') && localStorage.getItem('aarinat_user_email')) {
             document.getElementById('loginOverlay').style.display = 'none';
