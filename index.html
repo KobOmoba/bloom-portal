@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+       <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AariNAT School Portal · V2 Complete</title>
+    <title>AariNAT School Portal · Final</title>
     <style>
         :root {
             --brand: #4f46e5; --money: #10b981; --danger: #ef4444; --danger-light: #fef2f2;
@@ -116,6 +116,15 @@
 
         .app-section { display: none; }
         .app-section.active { display: block; }
+
+        /* password eye */
+        .pwd-wrapper { position: relative; }
+        .pwd-wrapper input { padding-right: 40px; }
+        .eye-toggle {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; font-size: 1.2rem; cursor: pointer;
+            color: var(--sub); padding: 0.2rem; width: auto; margin-top: 0;
+        }
     </style>
 </head>
 <body>
@@ -127,15 +136,27 @@
         <label>School ID</label>
         <input type="text" id="loginSchoolId" placeholder="e.g. BLOOM-ABK-0042">
         <label>Email</label>
-        <input type="email" id="loginEmail" placeholder="principal@school.edu.ng">
-        <label>Password</label>
-        <input type="password" id="loginPassword" placeholder="••••••••">
+        <input type="email" id="loginEmail" placeholder="principal@school.edu.ng" oninput="onEmailInput()">
+        <div id="newUserSection" style="display:none;">
+            <label>Create your password</label>
+            <div class="pwd-wrapper">
+                <input type="password" id="newPassword" placeholder="Min. 4 characters">
+                <button class="eye-toggle" onclick="togglePassword('newPassword', this)">👁️</button>
+            </div>
+        </div>
+        <div id="returningUserSection">
+            <label>Password</label>
+            <div class="pwd-wrapper">
+                <input type="password" id="loginPassword" placeholder="Enter your password">
+                <button class="eye-toggle" onclick="togglePassword('loginPassword', this)">👁️</button>
+            </div>
+        </div>
         <button class="btn-brand" onclick="login()">Log In</button>
-        <p style="font-size:0.7rem; text-align:center; margin-top:1rem; color:var(--sub);">First time? Use the School ID and password from your agent.</p>
+        <p style="font-size:0.7rem; text-align:center; margin-top:1rem; color:var(--sub);">Use the School ID from your agent's invoice.</p>
     </div>
 </div>
 
-<!-- MAIN APP (hidden until login) -->
+<!-- MAIN APP -->
 <div id="mainApp" style="display:none;">
     <div class="header">
         <div>
@@ -147,43 +168,36 @@
     </div>
 
     <div class="nav-scroller">
-        <div class="nav-link active" data-tab="revenue">💰 Revenue</div>
-        <div class="nav-link" data-tab="staff">👥 Staff Mgmt</div>
-        <div class="nav-link" data-tab="students">🎓 Students</div>
-        <div class="nav-link" data-tab="reports">📋 Reports</div>
+        <div class="nav-link active" data-tab="revenue" onclick="switchSection('revenue')">💰 Revenue</div>
+        <div class="nav-link" data-tab="staff" onclick="switchSection('staff')">👥 Staff</div>
+        <div class="nav-link" data-tab="students" onclick="switchSection('students')">🎓 Students</div>
+        <div class="nav-link" data-tab="reports" onclick="switchSection('reports')">📋 Reports</div>
     </div>
 
     <div class="container">
         <!-- REVENUE DASHBOARD -->
         <div class="app-section active" id="section-revenue">
             <div class="summary-bar">
-                <div class="summary-item"><div class="summary-number" style="color:var(--text);" id="totalStudents">0</div><div class="summary-label">Students</div></div>
-                <div class="summary-item"><div class="summary-number" style="color:var(--brand);" id="totalExpected">₦0</div><div class="summary-label">Expected</div></div>
-                <div class="summary-item"><div class="summary-number" style="color:var(--money);" id="totalCollected">₦0</div><div class="summary-label">Collected</div></div>
-                <div class="summary-item"><div class="summary-number" style="color:var(--danger);" id="totalOutstanding">₦0</div><div class="summary-label">Outstanding</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalStudents">0</div><div class="summary-label">Students</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalExpected">₦0</div><div class="summary-label">Expected</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalCollected">₦0</div><div class="summary-label">Collected</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalOutstanding">₦0</div><div class="summary-label">Outstanding</div></div>
             </div>
-
             <div class="chart-container">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.3rem;">
-                    <span style="font-weight:700; font-size:0.9rem;">📊 Collection Progress</span>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:700;">📊 Collection Progress</span>
                     <span id="progressPercent" style="font-weight:800; color:var(--money);">0%</span>
                 </div>
-                <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" id="progressFill" style="width:0%;">0%</div>
-                </div>
+                <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill" style="width:0%;">0%</div></div>
             </div>
-
             <div class="card">
                 <h3>📥 Bulk Payment Import</h3>
                 <input type="file" id="bulkPaymentFile" accept=".csv" onchange="handleBulkPayment(event)" style="display:none">
                 <button class="btn-outline" onclick="document.getElementById('bulkPaymentFile').click()">Upload Bank Statement CSV</button>
                 <div id="bulkFeedback" style="font-size:0.8rem; margin-top:0.5rem; color:var(--sub);"></div>
             </div>
-
             <div id="studentList"></div>
-            <div style="text-align:center; margin-top:0.5rem;">
-                <button class="btn-outline" onclick="switchSection('students')">➕ Add More Students</button>
-            </div>
+            <button class="btn-outline" onclick="switchSection('students')" style="margin-top:1rem;">➕ Add Students</button>
         </div>
 
         <!-- STAFF MANAGEMENT -->
@@ -194,12 +208,14 @@
                     <span id="staffCount" style="font-size:0.8rem; font-weight:700;">0/3 Used</span>
                 </div>
                 <div id="staffListContainer"></div>
-
                 <div id="addStaffForm" style="margin-top:1.5rem;">
                     <input type="text" id="newStaffName" placeholder="Full Name">
                     <input type="tel" id="newStaffPhone" placeholder="WhatsApp (234...)">
                     <input type="email" id="newStaffEmail" placeholder="Email">
-                    <input type="password" id="newStaffPassword" placeholder="Password">
+                    <div class="pwd-wrapper">
+                        <input type="password" id="newStaffPassword" placeholder="Password">
+                        <button class="eye-toggle" onclick="togglePassword('newStaffPassword', this)">👁️</button>
+                    </div>
                     <select id="newStaffRole">
                         <option value="Principal">Principal</option>
                         <option value="Bursar">Bursar</option>
@@ -208,7 +224,6 @@
                     </select>
                     <button class="btn-brand" id="btnAddStaff" onclick="addStaff()">➕ Add Staff</button>
                 </div>
-
                 <div id="upgradePrompt" class="upgrade-lock" style="display:none;">
                     <p style="font-size:0.8rem; color:#9a3412; font-weight:700;">⚠️ Staff Limit Reached (3/3)</p>
                     <p style="font-size:0.7rem; color:#c2410c; margin-bottom:1rem;">Upgrade to PREMIUM for unlimited staff &amp; priority support.</p>
@@ -229,10 +244,10 @@
                 <div id="csvFeedbackSetup" style="font-size:0.8rem; margin:0.5rem 0; color:var(--sub);"></div>
                 <label>Or Add Manually</label>
                 <input type="text" id="manualName" placeholder="Student Name">
-                <input type="tel" id="manualPhone" placeholder="Parent WhatsApp (234...)">
+                <input type="tel" id="manualPhone" placeholder="Parent WhatsApp">
                 <button class="btn-outline" onclick="addManualStudent()">➕ Add Student</button>
-                <div style="margin-top:1rem; font-weight:700;" id="setupCountWrapper">Students enrolled: <span id="setupCount">0</span></div>
-                <button class="btn-brand" onclick="saveSetup()">✅ Save &amp; Return to Dashboard</button>
+                <div style="margin-top:1rem; font-weight:700;">Enrolled: <span id="setupCount">0</span></div>
+                <button class="btn-brand" onclick="saveSetup()">✅ Save &amp; Return</button>
             </div>
         </div>
 
@@ -240,9 +255,9 @@
         <div class="app-section" id="section-reports">
             <div class="card">
                 <h3>📋 Parent Value Report</h3>
-                <p style="font-size:0.85rem; color:var(--sub); margin-bottom:1rem;">Generate a professional report card with grades, SWOT analysis, and fee receipt for any student.</p>
+                <p style="font-size:0.85rem; color:var(--sub); margin-bottom:1rem;">Generate a report with grades, SWOT, and fee receipt.</p>
                 <button class="btn-brand" onclick="window.open('report.html','_blank')">📄 Open Report Generator</button>
-                <p style="font-size:0.7rem; color:var(--sub); margin-top:0.75rem;">The report opens in a new tab. Print or save as PDF to share with parents.</p>
+                <p style="font-size:0.7rem; color:var(--sub); margin-top:0.75rem;">Opens in a new tab; print or save as PDF.</p>
             </div>
         </div>
     </div>
@@ -261,43 +276,69 @@
 <script>
     // ---- DATA STORE ----
     const DataStore = {
-        _schoolId: function() { return localStorage.getItem('aarinat_school_id') || 'default'; },
-        save: function(key, data) { localStorage.setItem(`aar_${this._schoolId()}_${key}`, JSON.stringify(data)); },
-        load: function(key) { return JSON.parse(localStorage.getItem(`aar_${this._schoolId()}_${key}`) || 'null'); },
-        getSchoolData: function() {
+        _schoolId() { return localStorage.getItem('aarinat_school_id') || 'default'; },
+        save(key, data) { localStorage.setItem(`aar_${this._schoolId()}_${key}`, JSON.stringify(data)); },
+        load(key) { return JSON.parse(localStorage.getItem(`aar_${this._schoolId()}_${key}`) || 'null'); },
+        getSchoolData() {
             return {
-                config: this.load('config') || { plan: 'basic', staffLimit: 3, fee: 0 },
+                config: this.load('config') || { plan: 'basic', fee: 0 },
                 staff: this.load('staff') || [],
                 students: this.load('students') || []
             };
         },
-        updateConfig: function(config) { this.save('config', config); },
-        updateStaff: function(staff) { this.save('staff', staff); },
-        updateStudents: function(students) { this.save('students', students); }
+        updateConfig(config) { this.save('config', config); },
+        updateStaff(staff) { this.save('staff', staff); },
+        updateStudents(students) { this.save('students', students); }
     };
 
-    // ---- AUTH ----
+    // ---- PASSWORD TOGGLE ----
+    function togglePassword(inputId, btn) {
+        const input = document.getElementById(inputId);
+        const type = input.type === 'password' ? 'text' : 'password';
+        input.type = type;
+        btn.textContent = type === 'password' ? '👁️' : '🙈';
+    }
+
+    // ---- EMAIL CHECK (live) ----
+    function onEmailInput() {
+        const email = document.getElementById('loginEmail').value.trim();
+        const schoolId = document.getElementById('loginSchoolId').value.trim();
+        if (!schoolId || !email) return;
+        localStorage.setItem('aarinat_school_id', schoolId); // set temporarily to check staff
+        const data = DataStore.getSchoolData();
+        const exists = data.staff.some(s => s.email === email);
+        document.getElementById('newUserSection').style.display = exists ? 'none' : 'block';
+        document.getElementById('returningUserSection').style.display = exists ? 'block' : 'none';
+    }
+
+    // ---- LOGIN ----
     function login() {
         const schoolId = document.getElementById('loginSchoolId').value.trim();
         const email = document.getElementById('loginEmail').value.trim();
-        const password = document.getElementById('loginPassword').value.trim();
-        if (!schoolId || !email || !password) return alert('Complete all fields.');
-        
+        if (!schoolId || !email) return alert('Enter School ID and Email.');
         localStorage.setItem('aarinat_school_id', schoolId);
         const data = DataStore.getSchoolData();
-        let user = data.staff.find(s => s.email === email && s.password === password);
-        
-        // If no staff exists and password matches preset, seed a principal
-        if (!user && data.staff.length === 0 && password === 'aarinat2024') {
-            const newUser = { name:'Principal', phone:'', email, password, role:'Principal' };
-            DataStore.updateStaff([newUser]);
-            user = newUser;
+        const existingUser = data.staff.find(s => s.email === email);
+
+        if (existingUser) {
+            const pwd = document.getElementById('loginPassword').value;
+            if (!pwd) return alert('Enter your password.');
+            if (pwd !== existingUser.password) return alert('Wrong password.');
+            localStorage.setItem('aarinat_user_email', email);
+            localStorage.setItem('aarinat_user_role', existingUser.role);
+        } else {
+            const newPwd = document.getElementById('newPassword').value;
+            if (!newPwd || newPwd.length < 4) return alert('Password must be at least 4 characters.');
+            const newUser = { name: 'Principal', phone: '', email, password: newPwd, role: 'Principal' };
+            data.staff.push(newUser);
+            DataStore.updateStaff(data.staff);
+            localStorage.setItem('aarinat_user_email', email);
+            localStorage.setItem('aarinat_user_role', 'Principal');
         }
-        
-        if (!user) return alert('Invalid credentials. Check School ID, email, and password.');
-        
-        localStorage.setItem('aarinat_user_email', email);
-        localStorage.setItem('aarinat_user_role', user.role);
+        completeLogin();
+    }
+
+    function completeLogin() {
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
         initPortal();
@@ -309,6 +350,7 @@
         location.reload();
     }
 
+    // ---- INIT PORTAL ----
     function initPortal() {
         const data = DataStore.getSchoolData();
         document.getElementById('planBadge').textContent = data.config.plan.toUpperCase();
@@ -317,18 +359,18 @@
         switchSection('revenue');
     }
 
-    // ---- NAVIGATION ----
-    function switchSection(name) {
+    // ---- SWITCH SECTIONS ----
+    function switchSection(section) {
         document.querySelectorAll('.app-section').forEach(s => s.classList.remove('active'));
-        document.getElementById(`section-${name}`).classList.add('active');
+        document.getElementById(`section-${section}`).classList.add('active');
         document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-        document.querySelector(`[data-tab="${name}"]`).classList.add('active');
-        if (name === 'revenue') renderDashboard();
-        if (name === 'staff') renderStaff();
-        if (name === 'students') renderSetup();
+        document.querySelector(`[data-tab="${section}"]`).classList.add('active');
+        if (section === 'revenue') renderDashboard();
+        if (section === 'staff') renderStaff();
+        if (section === 'students') renderSetup();
     }
 
-    // ---- STAFF (unchanged from earlier – keep all existing functions) ----
+    // ---- STAFF (with eye already in add form) ----
     function renderStaff() {
         const data = DataStore.getSchoolData();
         const staff = data.staff;
@@ -342,24 +384,27 @@
                     <h4>${s.name} <span class="role-tag">${s.role}</span></h4>
                     <span>${s.email}</span>
                 </div>
-                <button class="action-btn" style="background:var(--danger); color:white;" onclick="deleteStaff(${idx})">🗑️</button>
+                <button class="action-btn" style="background:var(--danger);color:white;" onclick="deleteStaff(${idx})">🗑️</button>
             </div>
         `).join('');
+        const btnAdd = document.getElementById('btnAddStaff');
+        const upgradePrompt = document.getElementById('upgradePrompt');
         if (plan === 'basic' && staff.length >= 3) {
             document.getElementById('addStaffForm').style.display = 'none';
-            document.getElementById('upgradePrompt').style.display = 'block';
+            upgradePrompt.style.display = 'block';
         } else {
             document.getElementById('addStaffForm').style.display = 'block';
-            document.getElementById('upgradePrompt').style.display = 'none';
+            upgradePrompt.style.display = 'none';
         }
     }
+
     function addStaff() {
         const name = document.getElementById('newStaffName').value.trim();
         const phone = document.getElementById('newStaffPhone').value.trim();
         const email = document.getElementById('newStaffEmail').value.trim();
         const password = document.getElementById('newStaffPassword').value.trim();
         const role = document.getElementById('newStaffRole').value;
-        if (!name || !email || !password) return alert('Fill all required fields.');
+        if (!name || !email || !password) return alert('Fill all fields.');
         const data = DataStore.getSchoolData();
         if (data.config.plan === 'basic' && data.staff.length >= 3) return alert('Upgrade to Premium.');
         data.staff.push({ name, phone, email, password, role });
@@ -367,12 +412,14 @@
         ['newStaffName','newStaffPhone','newStaffEmail','newStaffPassword'].forEach(id => document.getElementById(id).value = '');
         renderStaff();
     }
+
     function deleteStaff(idx) {
         const data = DataStore.getSchoolData();
         data.staff.splice(idx, 1);
         DataStore.updateStaff(data.staff);
         renderStaff();
     }
+
     function upgradeToPremium() {
         const data = DataStore.getSchoolData();
         data.config.plan = 'premium';
@@ -381,13 +428,13 @@
         switchSection('staff');
     }
 
-    // ---- STUDENT SETUP (unchanged) ----
+    // ---- STUDENTS SETUP ----
     function renderSetup() {
         const data = DataStore.getSchoolData();
         document.getElementById('setupCount').textContent = data.students.length;
-        document.getElementById('setupCountWrapper').style.display = 'block';
-        if (data.config.fee > 0) document.getElementById('setupFee').value = data.config.fee;
+        if (data.config.fee) document.getElementById('setupFee').value = data.config.fee;
     }
+
     function handleSetupCSV(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -395,13 +442,12 @@
         reader.onload = function(e) {
             const text = e.target.result;
             const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-            if (lines.length < 2) return alert('CSV must have header + data rows.');
+            if (lines.length < 2) return alert('Invalid CSV.');
             const data = DataStore.getSchoolData();
             for (let i = 1; i < lines.length; i++) {
                 const cols = lines[i].split(',').map(c => c.trim());
-                if (cols.length >= 2 && cols[0] && cols[1]) {
+                if (cols.length >= 2 && cols[0] && cols[1])
                     data.students.push({ name: cols[0], phone: cols[1].replace(/\D/g,''), totalFee: data.config.fee || 50000, paid: 0 });
-                }
             }
             DataStore.updateStudents(data.students);
             document.getElementById('csvFeedbackSetup').textContent = `✅ Imported ${lines.length-1} students.`;
@@ -409,6 +455,7 @@
         };
         reader.readAsText(file);
     }
+
     function addManualStudent() {
         const name = document.getElementById('manualName').value.trim();
         const phone = document.getElementById('manualPhone').value.trim();
@@ -420,6 +467,7 @@
         document.getElementById('manualPhone').value = '';
         renderSetup();
     }
+
     function saveSetup() {
         const fee = parseFloat(document.getElementById('setupFee').value);
         if (!fee || fee <= 0) return alert('Set a valid termly fee.');
@@ -432,24 +480,23 @@
         switchSection('revenue');
     }
 
-    // ---- REVENUE DASHBOARD (unchanged) ----
+    // ---- REVENUE DASHBOARD ----
     function renderDashboard() {
         const data = DataStore.getSchoolData();
         const students = data.students;
         if (students.length === 0) {
-            document.getElementById('studentList').innerHTML = '<p style="text-align:center;color:var(--sub);">No students yet. <a href="#" onclick="switchSection(\'students\')">Add students now</a>.</p>';
+            document.getElementById('studentList').innerHTML = '<p style="text-align:center;color:var(--sub);">No students yet.</p>';
             updateSummary(0,0,0,0);
             updateChart(0,0);
             return;
         }
         let totalExp = 0, totalCol = 0;
         const html = students.map((s, idx) => {
-            const exp = s.totalFee;
-            const col = s.paid || 0;
+            const exp = s.totalFee, col = s.paid || 0;
             totalExp += exp; totalCol += col;
-            const outstanding = Math.max(exp - col, 0);
-            const cls = outstanding === 0 ? 'status-paid' : 'status-owing';
-            const txt = outstanding === 0 ? 'Paid' : 'Owing';
+            const outstanding = exp - col;
+            const cls = outstanding <= 0 ? 'status-paid' : 'status-owing';
+            const txt = outstanding <= 0 ? 'Paid' : 'Owing';
             return `<div class="student-row">
                 <div class="student-info">
                     <div class="student-name">${esc(s.name)}</div>
@@ -458,8 +505,8 @@
                 </div>
                 <div class="actions">
                     ${outstanding > 0 ? `
-                        <button class="action-btn" style="background:var(--money);color:white;" onclick="sendReminder(${idx})">📲 Remind</button>
-                        <button class="action-btn" style="background:var(--brand);color:white;" onclick="openPaymentModal(${idx})">💰 Pay</button>
+                        <button class="action-btn" style="background:var(--money);color:white;" onclick="sendReminder(${idx})">📲</button>
+                        <button class="action-btn" style="background:var(--brand);color:white;" onclick="openPaymentModal(${idx})">💰</button>
                     ` : '<span style="font-size:0.8rem;color:var(--money);">✓</span>'}
                 </div>
             </div>`;
@@ -468,25 +515,28 @@
         updateSummary(students.length, totalExp, totalCol, totalExp - totalCol);
         updateChart(totalCol, totalExp);
     }
+
     function updateSummary(count, exp, col, out) {
         document.getElementById('totalStudents').textContent = count;
         document.getElementById('totalExpected').textContent = '₦' + exp.toLocaleString();
         document.getElementById('totalCollected').textContent = '₦' + col.toLocaleString();
         document.getElementById('totalOutstanding').textContent = '₦' + out.toLocaleString();
     }
+
     function updateChart(col, exp) {
         const pct = exp > 0 ? Math.round((col / exp) * 100) : 0;
         document.getElementById('progressPercent').textContent = pct + '%';
         document.getElementById('progressFill').style.width = pct + '%';
         document.getElementById('progressFill').textContent = pct > 5 ? pct + '%' : '';
     }
+
     function handleBulkPayment(event) {
         const file = event.target.files[0];
         if (!file) return;
         const reader = new FileReader();
         reader.onload = function(e) {
             const lines = e.target.result.split(/\r?\n/).filter(l => l.trim().length > 0);
-            if (lines.length < 2) return alert('CSV must have header + data.');
+            if (lines.length < 2) return alert('Invalid CSV.');
             const data = DataStore.getSchoolData();
             let match = 0, noMatch = 0;
             for (let i = 1; i < lines.length; i++) {
@@ -506,11 +556,13 @@
         };
         reader.readAsText(file);
     }
+
     function sendReminder(idx) {
         const s = DataStore.getSchoolData().students[idx];
         const out = s.totalFee - (s.paid || 0);
         window.open(`https://wa.me/${s.phone}?text=Dear%20Parent%2C%0A%0A*${encodeURIComponent(s.name)}*%20has%20an%20outstanding%20fee%20of%20*₦${out.toLocaleString()}*.%0A%0APlease%20make%20payment.%0A%0AThank%20you.%0A%E2%80%93%20School%20Management`, '_blank');
     }
+
     let payIdx = null;
     function openPaymentModal(idx) { payIdx = idx; document.getElementById('paymentAmount').value = ''; document.getElementById('paymentModal').style.display = 'flex'; }
     function recordPayment() {
@@ -523,8 +575,10 @@
         renderDashboard();
     }
     function closeModal() { document.getElementById('paymentModal').style.display = 'none'; payIdx = null; }
+
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+    // ---- STARTUP ----
     window.addEventListener('DOMContentLoaded', () => {
         if (localStorage.getItem('aarinat_school_id') && localStorage.getItem('aarinat_user_email')) {
             document.getElementById('loginOverlay').style.display = 'none';
@@ -534,4 +588,4 @@
     });
 </script>
 </body>
-</html>
+</html> 
