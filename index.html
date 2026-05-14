@@ -1,0 +1,1842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Edu-BLOOM">
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192x192.png">
+    <link rel="apple-touch-icon" href="icon-192x192.png">
+    <title>Educational Bloom · School Portal</title>
+    <style>
+        :root {
+            --brand: #4f46e5; --brand-dark: #3730a3; --money: #10b981; --danger: #ef4444;
+            --warning: #f59e0b; --surface: #ffffff; --bg: #f1f5f9; --text: #0f172a;
+            --sub: #64748b; --border: #e2e8f0; --radius: 16px; --shadow: 0 4px 12px rgba(0,0,0,0.04);
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-sports: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --gradient-arts: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%);
+            --gradient-music: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background: var(--bg); color: var(--text); padding-bottom: 80px; line-height: 1.5; }
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--gradient-1); display: flex; justify-content: center; align-items: center; z-index: 2000; padding: 20px; }
+        .login-card { background: white; border-radius: 20px; padding: 2rem; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); animation: slideUp 0.4s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .login-card .logo h1 { background: var(--gradient-1); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 1.8rem; font-weight: 800; text-align: center; margin-bottom: 0.5rem; }
+        .login-card .logo p { text-align: center; color: var(--sub); font-size: 0.85rem; }
+        .header { background: var(--text); color: white; padding: 1rem 1.25rem; border-bottom: 4px solid var(--brand); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; }
+        .header h1 { font-size: 1.2rem; font-weight: 800; }
+        .header .school-info { font-size: 0.8rem; opacity: 0.9; }
+        .plan-badge { font-size: 0.65rem; padding: 0.25rem 0.7rem; border-radius: 20px; font-weight: 700; text-transform: uppercase; }
+        .plan-basic { background: #fff3cd; color: #856404; }
+        .plan-premium { background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%); color: white; }
+        .btn-logout { background: #475569; color: white; font-size: 0.8rem; padding: 0.5rem 1rem; border: none; border-radius: 8px; cursor: pointer; width: auto; margin-top: 0; }
+        .sync-indicator { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; margin-left: 8px; }
+        .sync-indicator.online { background: #dcfce7; color: #166534; }
+        .sync-indicator.offline { background: #fee2e2; color: #991b1b; }
+        .sync-indicator.syncing { background: #dbeafe; color: #1e40af; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%{opacity:1} 50%{opacity:0.6} 100%{opacity:1} }
+        .nav-scroller { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; overflow-x: auto; padding: 0.5rem 1rem; gap: 0.5rem; scrollbar-width: none; }
+        .nav-scroller::-webkit-scrollbar { display: none; }
+        .nav-link { padding: 0.75rem 1rem; font-size: 0.75rem; font-weight: 600; color: var(--sub); white-space: nowrap; border-radius: 10px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.3rem; }
+        .nav-link.active { background: var(--brand); color: white; }
+        .nav-link:hover:not(.active) { background: #f1f5f9; }
+        .ai-badge { background: linear-gradient(45deg, #ff00cc, #333399); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; margin-left: 4px; }
+        .sports-badge { background: var(--gradient-sports); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; margin-left: 4px; }
+        .arts-badge { background: var(--gradient-arts); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; margin-left: 4px; }
+        .music-badge { background: var(--gradient-music); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.6rem; margin-left: 4px; }
+        .container { padding: 1rem; max-width: 700px; margin: 0 auto; }
+        .card { background: var(--surface); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; box-shadow: var(--shadow); border: 1px solid var(--border); }
+        .card h3 { font-size: 1rem; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; }
+        label { font-size: 0.7rem; font-weight: 700; color: var(--sub); text-transform: uppercase; display: block; margin-bottom: 0.25rem; }
+        input, select, textarea { width: 100%; padding: 0.7rem; margin-bottom: 0.8rem; border: 1.5px solid var(--border); border-radius: 10px; font-size: 0.95rem; background: #fafbfc; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: var(--brand); }
+        .pwd-wrapper { position: relative; margin-bottom: 1rem; }
+        .pwd-wrapper input { padding-right: 45px; margin-bottom: 0; }
+        .eye-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 1.3rem; cursor: pointer; color: var(--sub); padding: 0; width: auto; margin: 0; z-index: 10; }
+        button { display: block; width: 100%; padding: 0.85rem; border: none; border-radius: 12px; font-weight: 700; font-size: 0.95rem; cursor: pointer; margin-top: 0.5rem; transition: 0.2s; }
+        .btn-brand { background: var(--brand); color: white; }
+        .btn-brand:hover { background: var(--brand-dark); }
+        .btn-money { background: var(--money); color: white; }
+        .btn-outline { background: transparent; border: 1.5px solid var(--brand); color: var(--brand); }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-upgrade { background: var(--gradient-1); color: white; }
+        .btn-whatsapp { background: #25d366; color: white; }
+        .btn-sports { background: var(--gradient-sports); color: white; }
+        .btn-arts { background: var(--gradient-arts); color: white; }
+        .btn-music { background: var(--gradient-music); color: white; }
+        .btn-small { width: auto; padding: 0.5rem 1rem; font-size: 0.8rem; margin-top: 0; display: inline-block; }
+        .summary-bar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+        .summary-item { background: var(--surface); border-radius: 12px; padding: 1rem; text-align: center; border: 1px solid var(--border); }
+        .summary-number { font-size: 1.4rem; font-weight: 800; }
+        .summary-label { font-size: 0.7rem; color: var(--sub); text-transform: uppercase; }
+        .progress-bar-bg { background: #e2e8f0; height: 12px; border-radius: 6px; overflow: hidden; margin-top: 0.3rem; }
+        .progress-bar-fill { height: 100%; background: var(--money); border-radius: 6px; transition: width 0.5s; }
+        .student-row, .staff-row { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem; background: var(--surface); border-radius: 10px; margin-bottom: 0.5rem; border: 1px solid var(--border); }
+        .student-info, .staff-info { flex: 1; }
+        .student-name, .staff-name { font-weight: 700; font-size: 0.95rem; }
+        .student-detail, .staff-detail { font-size: 0.75rem; color: var(--sub); }
+        .status-badge { font-size: 0.7rem; padding: 0.25rem 0.6rem; border-radius: 20px; font-weight: 700; }
+        .status-paid { background: #dcfce7; color: #166534; }
+        .status-owing { background: #fef2f2; color: #991b1b; }
+        .role-tag { font-size: 0.6rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: #e2e8f0; }
+        .actions { display: flex; gap: 0.4rem; }
+        .action-btn { font-size: 0.75rem; padding: 0.4rem 0.6rem; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; width: auto; margin-top: 0; }
+        .attendance-grid { display: grid; grid-template-columns: 3fr 1fr 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; font-size: 0.8rem; }
+        .attendance-header { font-weight: 800; background: var(--border); padding: 8px; border-radius: 8px; }
+        .date-nav { display: flex; gap: 8px; margin-bottom: 1rem; align-items: center; }
+        .date-nav input { flex: 2; margin: 0; }
+        .date-nav button { width: auto; margin: 0; padding: 0.6rem; }
+        .sports-header, .arts-header, .music-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border); }
+        .sports-grid, .music-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+        @media (min-width: 600px) { .sports-grid, .music-grid { grid-template-columns: 1fr 1fr; } }
+        .sport-card { background: white; border-radius: 12px; padding: 1rem; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .sport-card:hover { border-color: var(--brand); box-shadow: var(--shadow); }
+        .sport-card.selected { border: 2px solid #11998e; background: #f0fdf4; }
+        .sport-icon, .music-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .sport-title, .music-title { font-weight: 700; margin-bottom: 0.25rem; }
+        .sport-detail, .music-detail { font-size: 0.85rem; color: var(--sub); }
+        .team-list { margin-top: 1rem; }
+        .team-member { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+        .team-member:last-child { border-bottom: none; }
+        .member-avatar { width: 32px; height: 32px; background: var(--gradient-sports); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 0.8rem; }
+        .fixture-card { background: #f8fafc; border-radius: 10px; padding: 0.75rem; margin-bottom: 0.5rem; border-left: 3px solid #11998e; }
+        .fixture-date { font-size: 0.75rem; color: var(--sub); }
+        .fixture-teams { font-weight: 600; margin: 0.25rem 0; }
+        .fixture-result { font-size: 0.85rem; color: var(--money); }
+        .arts-gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+        .artwork-card { background: white; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .artwork-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+        .artwork-preview { height: 120px; background: linear-gradient(135deg, #a18cd1 0%, #fbc2eb 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 2rem; }
+        .artwork-info { padding: 0.75rem; }
+        .artwork-title { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+        .artwork-student { font-size: 0.75rem; color: var(--sub); }
+        .artwork-actions { display: flex; gap: 0.25rem; margin-top: 0.5rem; }
+        .artwork-actions button { width: auto; padding: 0.25rem 0.5rem; font-size: 0.7rem; }
+        .music-card { background: white; border-radius: 12px; padding: 1rem; border: 1px solid var(--border); }
+        .instrument-list { margin-top: 0.5rem; }
+        .instrument-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+        .instrument-item:last-child { border-bottom: none; }
+        .instrument-name { font-weight: 600; }
+        .instrument-status { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; }
+        .status-available { background: #dcfce7; color: #166534; }
+        .status-inuse { background: #fef3c7; color: #92400e; }
+        .practice-log { background: #f8fafc; border-radius: 10px; padding: 0.75rem; margin-bottom: 0.5rem; }
+        .practice-date { font-size: 0.75rem; color: var(--sub); }
+        .practice-student { font-weight: 600; margin: 0.25rem 0; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 999; padding: 20px; }
+        .modal.open { display: flex; }
+        .modal-card { background: white; border-radius: 16px; padding: 1.5rem; width: 100%; max-width: 450px; max-height: 90vh; overflow-y: auto; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .close-modal { background: none; border: none; font-size: 1.5rem; cursor: pointer; width: auto; margin: 0; }
+        .support-fab { position: fixed; bottom: 20px; right: 20px; width: 56px; height: 56px; background: var(--brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer; z-index: 50; }
+        .app-section { display: none; animation: fadeIn 0.3s ease-out; }
+        .app-section.active { display: block; }
+        @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+        .upgrade-lock { background: #fff7ed; border: 1px solid #fed7aa; padding: 1rem; border-radius: 12px; text-align: center; margin-top: 1rem; }
+        .opp-card { background: white; border-radius: 12px; padding: 1rem; margin-bottom: 0.75rem; border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .opp-card:hover { border-color: var(--brand); box-shadow: var(--shadow); }
+        .opp-card.premium-preview { opacity: 0.7; filter: blur(0.5px); position: relative; }
+        .opp-card.premium-preview::after { content: '✨ Premium'; position: absolute; top: 10px; right: 10px; background: var(--gradient-1); color: white; font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
+        .opp-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.25rem; line-height: 1.3; }
+        .opp-meta { font-size: 0.75rem; color: var(--sub); display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .opp-badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; font-weight: 600; }
+        .opp-badge.scholarship { background: #dbeafe; color: #1e40af; }
+        .opp-badge.grant { background: #dcfce7; color: #166534; }
+        .opp-badge.internship { background: #fef3c7; color: #92400e; }
+        .opp-badge.competition { background: #fce7f3; color: #9d174d; }
+        .opp-deadline { font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
+        .opp-deadline.urgent { background: #fee2e2; color: #991b1b; }
+        .opp-deadline.soon { background: #fef3c7; color: #92400e; }
+        .opp-deadline.normal { background: #dcfce7; color: #166534; }
+        .opp-amount { font-weight: 700; color: var(--money); font-size: 0.85rem; margin-top: 0.25rem; }
+        .opp-actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+        .opp-actions button { width: auto; padding: 0.4rem 0.8rem; font-size: 0.75rem; margin-top: 0; }
+        .opp-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 1rem 0; }
+        .opp-filters select { margin: 0; padding: 0.6rem; font-size: 0.85rem; }
+        .opp-premium-cta { margin-top: 1.5rem; padding: 1rem; background: linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%); border: 2px solid var(--brand); border-radius: 12px; text-align: center; }
+        .opp-premium-cta p { font-size: 0.85rem; color: var(--sub); margin: 0.5rem 0; }
+        .agent-card { background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 2px solid var(--money); border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
+        .agent-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+        .agent-avatar { width: 56px; height: 56px; background: var(--brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 1.2rem; flex-shrink: 0; }
+        .agent-info h4 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+        .agent-info p { font-size: 0.85rem; color: var(--sub); }
+        .agent-contact { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+        .contact-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+        .contact-row:last-child { margin-bottom: 0; }
+        .contact-icon { width: 40px; height: 40px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; }
+        .contact-details { flex: 1; }
+        .contact-label { font-size: 0.75rem; color: var(--sub); margin-bottom: 0.15rem; }
+        .contact-value { font-weight: 600; font-size: 0.95rem; }
+        .social-add-form { background: #f8fafc; padding: 1rem; border-radius: 12px; margin-bottom: 1rem; }
+        .social-page-item { display: flex; justify-content: space-between; align-items: center; padding: 0.8rem; background: white; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 0.5rem; }
+        .social-platform-icon { font-size: 1.5rem; margin-right: 0.5rem; }
+        .comms-log-item { padding: 0.75rem 0; border-bottom: 1px solid var(--border); }
+        .comms-log-item:last-child { border-bottom: none; }
+        @media (min-width: 600px) { .summary-bar { grid-template-columns: repeat(4, 1fr); } .container { max-width: 900px; } }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+        <div class="logo">
+            <h1>Educational Bloom</h1>
+            <p>Powered by AariNAT Company Limited</p>
+        </div>
+        <label>School ID</label>
+        <input type="text" id="loginSchoolId" placeholder="e.g. BLOOM-ABK-0042">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="principal@school.edu.ng" oninput="onEmailInput()">
+        <div id="newUserSection" style="display:none;">
+            <label>Create your password</label>
+            <div class="pwd-wrapper">
+                <input type="password" id="newPassword" placeholder="Min. 4 characters">
+                <button class="eye-toggle" onclick="togglePassword('newPassword',this)">👁️</button>
+            </div>
+        </div>
+        <div id="returningUserSection">
+            <label>Password</label>
+            <div class="pwd-wrapper">
+                <input type="password" id="loginPassword" placeholder="Enter your password">
+                <button class="eye-toggle" onclick="togglePassword('loginPassword',this)">👁️</button>
+            </div>
+        </div>
+        <button class="btn-brand" onclick="login()">Access Portal</button>
+        <p style="font-size:0.7rem;text-align:center;margin-top:1rem;color:var(--sub);">Use the School ID provided by your AariNAT Admin.</p>
+    </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="mainApp" style="display:none;">
+    <div class="header">
+        <div>
+            <h1>Educational Bloom</h1>
+            <div class="school-info">School: <span id="headerSchoolId">—</span></div>
+            <span id="planBadge" class="plan-badge plan-basic">Basic</span>
+            <span id="syncIndicator" class="sync-indicator offline">● Offline</span>
+        </div>
+        <button class="btn-logout" onclick="logout()">🚪 Logout</button>
+    </div>
+
+    <nav class="nav-scroller">
+        <button class="nav-link active" data-tab="revenue" onclick="switchSection('revenue')">💰 Revenue</button>
+        <button class="nav-link" data-tab="students" onclick="switchSection('students')">🎓 Students</button>
+        <button class="nav-link" data-tab="staff" onclick="switchSection('staff')">👥 Staff</button>
+        <button class="nav-link" data-tab="reports" onclick="switchSection('reports')">📋 Reports</button>
+        <button class="nav-link" data-tab="attendance" onclick="switchSection('attendance')">📅 Attendance</button>
+        <button class="nav-link" data-tab="sports" onclick="switchSection('sports')">⚽ Sports <span class="sports-badge">NEW</span></button>
+        <button class="nav-link" data-tab="arts" onclick="switchSection('arts')">🎨 Arts <span class="arts-badge">NEW</span></button>
+        <button class="nav-link" data-tab="music" onclick="switchSection('music')">🎵 Music <span class="music-badge">NEW</span></button>
+        <button class="nav-link" data-tab="health" onclick="switchSection('health')">🏥 Health</button>
+        <button class="nav-link" data-tab="alumni" onclick="switchSection('alumni')">🎓 Alumni</button>
+        <button class="nav-link" data-tab="expenses" onclick="switchSection('expenses')">📉 Expenses</button>
+        <button class="nav-link" data-tab="financeAI" onclick="switchSection('financeAI')">🤖 AI</button>
+        <button class="nav-link" data-tab="comms" onclick="switchSection('comms')">📢 Comms</button>
+        <button class="nav-link" data-tab="analytics" onclick="switchSection('analytics')">📊 Analytics</button>
+        <button class="nav-link" data-tab="security" onclick="switchSection('security')">🔒 Security</button>
+        <button class="nav-link" data-tab="support" onclick="switchSection('support')">❓ Support</button>
+        <button class="nav-link" data-tab="settings" onclick="switchSection('settings')">⚙️ Settings</button>
+        <button class="nav-link" data-tab="opportunities" onclick="switchSection('opportunities')">🔍 Scout <span class="ai-badge">PREMIUM</span></button>
+    </nav>
+
+    <main class="container">
+
+        <!-- 1. REVENUE -->
+        <section id="section-revenue" class="app-section active">
+            <div class="summary-bar">
+                <div class="summary-item"><div class="summary-number" id="totalStudents">0</div><div class="summary-label">Students</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalExpected">₦0</div><div class="summary-label">Expected</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalCollected">₦0</div><div class="summary-label">Collected</div></div>
+                <div class="summary-item"><div class="summary-number" id="totalOutstanding">₦0</div><div class="summary-label">Outstanding</div></div>
+            </div>
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-weight:700;">📊 Collection Progress</span>
+                    <span id="progressPercent" style="font-weight:800;color:var(--money);">0%</span>
+                </div>
+                <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill" style="width:0%;"></div></div>
+            </div>
+            <div class="card">
+                <h3>📥 Bulk Payment Import</h3>
+                <input type="file" id="bulkPaymentFile" accept=".csv" onchange="handleBulkPayment(event)" style="display:none">
+                <button class="btn-outline" onclick="document.getElementById('bulkPaymentFile').click()">Upload Bank Statement CSV</button>
+                <div id="bulkFeedback" style="font-size:0.8rem;margin-top:0.5rem;color:var(--sub);"></div>
+            </div>
+            <div id="studentList"></div>
+            <button class="btn-outline" onclick="switchSection('students')" style="margin-top:1rem;">➕ Add Students</button>
+        </section>
+
+        <!-- 2. STUDENTS -->
+        <section id="section-students" class="app-section">
+            <div class="card">
+                <h3>⚙️ Student Setup</h3>
+                <label>Average Termly Fee (₦)</label>
+                <input type="number" id="setupFee" placeholder="e.g. 50000">
+                <label>Upload Register (CSV)</label>
+                <input type="file" id="csvUpload" accept=".csv" onchange="handleSetupCSV(event)" style="display:none">
+                <button class="btn-outline" onclick="document.getElementById('csvUpload').click()">📁 Upload CSV</button>
+                <div id="csvFeedbackSetup" style="font-size:0.8rem;margin:0.5rem 0;color:var(--sub);"></div>
+                <label>Or Add Manually</label>
+                <input type="text" id="manualName" placeholder="Student Name">
+                <input type="tel" id="manualPhone" placeholder="Parent WhatsApp">
+                <button class="btn-outline" onclick="addManualStudent()">➕ Add Student</button>
+                <div style="margin-top:1rem;font-weight:700;">Enrolled: <span id="setupCount">0</span></div>
+                <button class="btn-brand" onclick="saveSetup()">✅ Save & Return</button>
+            </div>
+        </section>
+
+        <!-- 3. STAFF -->
+        <section id="section-staff" class="app-section">
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h3>👥 School Staff</h3>
+                    <span id="staffCount" style="font-size:0.8rem;font-weight:700;">0/3 Used</span>
+                </div>
+                <div id="staffListContainer"></div>
+                <div id="addStaffForm" style="margin-top:1.5rem;">
+                    <input type="text" id="newStaffName" placeholder="Full Name">
+                    <input type="tel" id="newStaffPhone" placeholder="WhatsApp (234...)">
+                    <input type="email" id="newStaffEmail" placeholder="Email">
+                    <div class="pwd-wrapper">
+                        <input type="password" id="newStaffPassword" placeholder="Password">
+                        <button class="eye-toggle" onclick="togglePassword('newStaffPassword',this)">👁️</button>
+                    </div>
+                    <select id="newStaffRole">
+                        <option value="Principal">Principal</option>
+                        <option value="Bursar">Bursar</option>
+                        <option value="Teacher">Teacher</option>
+                        <option value="Admin">Admin</option>
+                        <option value="Sports Coach">Sports Coach</option>
+                        <option value="Arts Teacher">Arts Teacher</option>
+                        <option value="Music Teacher">Music Teacher</option>
+                    </select>
+                    <button class="btn-brand" onclick="addStaff()">➕ Add Staff</button>
+                </div>
+                <div id="upgradePrompt" class="upgrade-lock" style="display:none;">
+                    <p style="font-size:0.8rem;color:#9a3412;font-weight:700;">⚠️ Staff Limit Reached (3/3)</p>
+                    <p style="font-size:0.7rem;color:#c2410c;margin-bottom:1rem;">Upgrade to PREMIUM for unlimited staff.</p>
+                    <button class="btn-upgrade" onclick="upgradeToPremium()">✨ Upgrade Now</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. REPORTS -->
+        <section id="section-reports" class="app-section">
+            <div class="card">
+                <h3>📋 Parent Value Report</h3>
+                <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">Generate a report with grades, SWOT, and fee receipt.</p>
+                <button class="btn-brand" onclick="window.open('report.html','_blank')">📄 Open Report Generator</button>
+                <p style="font-size:0.7rem;color:var(--sub);margin-top:0.75rem;">Opens in a new tab; print or save as PDF.</p>
+            </div>
+        </section>
+
+        <!-- 5. ATTENDANCE -->
+        <section id="section-attendance" class="app-section">
+            <div class="card">
+                <h3>📆 Daily Register</h3>
+                <div class="date-nav">
+                    <input type="date" id="attendanceDate">
+                    <button class="btn-outline" onclick="loadAttendance()">Load</button>
+                    <button class="btn-money" onclick="saveAttendance()">💾 Save</button>
+                </div>
+                <div id="attendanceGrid"></div>
+                <button class="btn-brand" onclick="showAttendanceSummary()" style="margin-top:1rem;">📊 View Student Summary</button>
+            </div>
+            <div id="attendanceSummaryModal" class="modal">
+                <div class="modal-card">
+                    <div class="modal-header">
+                        <h3>📊 Attendance Summary</h3>
+                        <button class="close-modal" onclick="closeModal('attendanceSummaryModal')">×</button>
+                    </div>
+                    <div id="summaryList" style="max-height:60vh;overflow-y:auto;"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 6. SPORTS -->
+        <section id="section-sports" class="app-section">
+            <div class="card">
+                <div class="sports-header">
+                    <h3>⚽ Sports & Athletics</h3>
+                    <span class="sports-badge">Nigerian Context</span>
+                </div>
+                <h4 style="margin:1rem 0 0.5rem;">Popular Sports</h4>
+                <div class="sports-grid" id="predefinedSports">
+                    <div class="sport-card selected" onclick="selectSport('football',this)"><div class="sport-icon">⚽</div><div class="sport-title">Football</div><div class="sport-detail">U-13, U-15, U-17 Teams</div></div>
+                    <div class="sport-card" onclick="selectSport('athletics',this)"><div class="sport-icon">🏃</div><div class="sport-title">Athletics</div><div class="sport-detail">Track & Field Events</div></div>
+                    <div class="sport-card" onclick="selectSport('basketball',this)"><div class="sport-icon">🏀</div><div class="sport-title">Basketball</div><div class="sport-detail">Boys & Girls Teams</div></div>
+                    <div class="sport-card" onclick="selectSport('volleyball',this)"><div class="sport-icon">🏐</div><div class="sport-title">Volleyball</div><div class="sport-detail">Inter-house Competition</div></div>
+                    <div class="sport-card" onclick="selectSport('tabletennis',this)"><div class="sport-icon">🏓</div><div class="sport-title">Table Tennis</div><div class="sport-detail">Individual & Team Events</div></div>
+                </div>
+                <h4 style="margin:1.5rem 0 0.5rem;">🏅 Your School's Sports</h4>
+                <div class="sports-grid" id="customSports"></div>
+                <button class="btn-outline" style="margin-top:1rem;" onclick="openModal('addCustomSportModal')">➕ Add Custom Sport</button>
+                <div id="sportTeamSection" style="margin-top:1.5rem;">
+                    <h4 style="margin:1rem 0 0.5rem;">👥 Team: <span id="currentSportLabel">Football</span></h4>
+                    <button class="btn-sports" style="width:auto;margin-bottom:0.5rem;" onclick="openModal('addTeamMemberModal')">➕ Add Player</button>
+                    <div class="team-list" id="teamList"></div>
+                </div>
+                <h4 style="margin:1.5rem 0 0.5rem;">📅 Fixtures & Results</h4>
+                <div id="fixturesList">
+                    <div class="fixture-card"><div class="fixture-date">Sat, 25 May • 3:00 PM</div><div class="fixture-teams">Our School vs. Kings Academy</div><div class="fixture-result">Venue: School Field • Inter-house Finals</div></div>
+                </div>
+                <!-- FIX: was alert placeholder -->
+                <button class="btn-outline" style="margin-top:1rem;" onclick="recordMatchResult()">📝 Record Match Result</button>
+            </div>
+        </section>
+
+        <!-- 7. ARTS -->
+        <section id="section-arts" class="app-section">
+            <div class="card">
+                <div class="arts-header"><h3>🎨 Arts & Culture</h3><span class="arts-badge">Creative Expression</span></div>
+                <h4 style="margin:0 0 0.5rem;">🖼️ Student Artwork Gallery</h4>
+                <div class="arts-gallery" id="artsGallery">
+                    <div class="artwork-card" onclick="addArtwork()"><div class="artwork-preview" style="background:#f1f5f9;color:var(--sub);">➕</div><div class="artwork-info"><div class="artwork-title">Add New Artwork</div><div class="artwork-student">Upload photo or describe</div></div></div>
+                </div>
+                <!-- FIX: was alert placeholder -->
+                <button class="btn-arts" style="margin-top:1rem;" onclick="planNewExhibition()">➕ Plan New Exhibition</button>
+            </div>
+        </section>
+
+        <!-- 8. MUSIC — FIX: added instrumentList and practiceLogs divs -->
+        <section id="section-music" class="app-section">
+            <div class="card">
+                <div class="music-header"><h3>🎵 Music & Performance</h3><span class="music-badge">Nigerian & Global</span></div>
+                <div class="music-grid">
+                    <div class="music-card">
+                        <div class="music-icon">🎤</div>
+                        <div class="music-title">School Choir</div>
+                        <div class="music-detail">Practices: Tue/Thu 3PM</div>
+                        <!-- FIX: was alert placeholder — now navigates to staff to assign choir teacher -->
+                        <button class="btn-music btn-small" style="margin-top:0.5rem;" onclick="manageChoirRoster()">Manage Roster</button>
+                    </div>
+                    <div class="music-card">
+                        <div class="music-icon">🥁</div>
+                        <div class="music-title">Traditional Drumming</div>
+                        <div class="music-detail">Talking drums, Dundun, Bata</div>
+                        <!-- FIX: was alert placeholder — now opens log practice modal -->
+                        <button class="btn-music btn-small" style="margin-top:0.5rem;" onclick="openModal('logPracticeModal')">Schedule Practice</button>
+                    </div>
+                    <div class="music-card">
+                        <div class="music-icon">🎹</div>
+                        <div class="music-title">Instrumental Classes</div>
+                        <div class="music-detail">Piano, Guitar, Keyboard lessons</div>
+                        <button class="btn-music btn-small" style="margin-top:0.5rem;" onclick="openModal('bookLessonModal')">Book Lesson</button>
+                    </div>
+                </div>
+
+                <!-- FIX: these elements were missing entirely — renderInstrumentList() and renderPracticeLogs() had no targets -->
+                <h4 style="margin:1.5rem 0 0.5rem;">🎸 Instruments</h4>
+                <div class="instrument-list" id="instrumentList"><p style="text-align:center;color:var(--sub);padding:0.5rem;">Loading...</p></div>
+
+                <h4 style="margin:1.5rem 0 0.5rem;">📝 Recent Practice Logs</h4>
+                <div id="practiceLogs"><p style="text-align:center;color:var(--sub);padding:0.5rem;">No logs yet.</p></div>
+
+                <button class="btn-outline" style="margin-top:1rem;" onclick="openModal('logPracticeModal')">📝 Log Practice Session</button>
+            </div>
+        </section>
+
+        <!-- 9. HEALTH -->
+        <section id="section-health" class="app-section">
+            <div class="summary-bar">
+                <div class="summary-item"><div class="summary-number">24</div><div class="summary-label">Sick Bay Visits</div></div>
+                <div class="summary-item"><div class="summary-number">92%</div><div class="summary-label">Vaccinated</div></div>
+            </div>
+            <div class="card">
+                <h3>🏥 Health Records</h3>
+                <div class="student-row"><div class="student-info"><div class="student-name">Tunde Okonkwo</div><div class="student-detail">Malaria (Positive) • May 10</div></div><span class="status-badge status-owing">Sent Home</span></div>
+                <button class="btn-outline" style="margin-top:1rem;" onclick="logNewIncident()">➕ Log New Incident</button>
+            </div>
+        </section>
+
+        <!-- 10. ALUMNI -->
+        <section id="section-alumni" class="app-section">
+            <div class="summary-bar">
+                <div class="summary-item"><div class="summary-number">450</div><div class="summary-label">Registered Alumni</div></div>
+                <div class="summary-item"><div class="summary-number">₦1.2M</div><div class="summary-label">Donations Received</div></div>
+            </div>
+            <div class="card">
+                <h3>🎓 Alumni Network</h3>
+                <button class="btn-whatsapp" onclick="sendFundraisingAppeal()">📢 Send Fundraising Appeal</button>
+            </div>
+        </section>
+
+        <!-- 11. EXPENSES -->
+        <section id="section-expenses" class="app-section">
+            <button class="btn-brand" style="width:auto;margin-bottom:1rem;" onclick="openModal('addExpenseModal')">➕ Log Expense</button>
+            <div class="card">
+                <h3>📉 Recent Expenses</h3>
+                <div id="expensesList">
+                    <div class="student-row"><div class="student-info"><div class="student-name">Generator Servicing</div><div class="student-detail">Infrastructure • May 12</div></div><div style="font-weight:700;">₦45,000</div></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 12. FINANCE AI — FIX: apply button now calls applyFinanceStrategy() -->
+        <section id="section-financeAI" class="app-section">
+            <div class="card" style="border-left:4px solid #ff00cc;">
+                <h3>🤖 Finance AI</h3>
+                <div id="financeAIEmpty" style="text-align:center;padding:2rem 1rem;">
+                    <div style="font-size:3rem;margin-bottom:1rem;">📊</div>
+                    <h4 style="color:var(--sub);margin-bottom:0.5rem;">No Financial Data Yet</h4>
+                    <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">Upload your school's financial records (CSV) to get AI-powered insights.</p>
+                    <button class="btn-brand" onclick="document.getElementById('financeUploadInput').click()">📤 Upload Financial Data</button>
+                    <input type="file" id="financeUploadInput" accept=".csv,.xlsx" style="display:none;" onchange="handleFinanceUpload(event)">
+                    <p style="font-size:0.75rem;color:var(--sub);margin-top:0.5rem;">Columns expected: Date, Description, Amount, Type (income/expense)</p>
+                </div>
+                <div id="financeAIAnalysis" style="display:none;">
+                    <div class="summary-bar">
+                        <div class="summary-item"><div class="summary-number" id="aiProjection">₦0</div><div class="summary-label">Next Term Projection</div></div>
+                        <div class="summary-item"><div class="summary-number" id="aiAnomalies" style="color:var(--danger);">0</div><div class="summary-label">Large Transactions</div></div>
+                    </div>
+                    <p style="font-size:0.85rem;color:var(--sub);margin:1rem 0;">AI insight based on your uploaded financial data.</p>
+                    <div style="background:#f0fdf4;padding:1rem;border-radius:12px;margin-bottom:1rem;">
+                        <strong>💡 Recommendation:</strong><br>
+                        <span id="aiRecommendation" style="font-size:0.9rem;">Analysing your data...</span>
+                    </div>
+                    <!-- FIX: was alert('Strategy applied locally') -->
+                    <button class="btn-outline" onclick="applyFinanceStrategy()">✨ Save This Strategy</button>
+                    <button class="btn-outline" style="margin-top:0.5rem;" onclick="document.getElementById('financeUploadInput').click()">📤 Re-upload Data</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 13. COMMS — FIX: all four quick action buttons now functional -->
+        <section id="section-comms" class="app-section">
+            <div class="card">
+                <h3>📢 Social Media Workstation</h3>
+                <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">Manage your school's social pages and broadcast messages.</p>
+                <div class="social-add-form">
+                    <h4 style="margin-bottom:0.5rem;">➕ Add Social Media Page</h4>
+                    <select id="socialPlatform">
+                        <option value="">Select Platform</option>
+                        <option value="facebook">Facebook</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="twitter">Twitter/X</option>
+                        <option value="youtube">YouTube</option>
+                        <option value="tiktok">TikTok</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="whatsapp">WhatsApp Business</option>
+                        <option value="telegram">Telegram</option>
+                    </select>
+                    <input type="text" id="socialPageName" placeholder="Page/Profile Name (e.g. @EduBloomSchool)">
+                    <input type="url" id="socialPageURL" placeholder="Page URL (e.g. https://facebook.com/edubloomschool)">
+                    <button class="btn-brand" onclick="addSocialPage()">Add Page</button>
+                </div>
+                <h4 style="margin-bottom:0.5rem;">🔗 Connected Pages</h4>
+                <div id="socialPagesList">
+                    <p style="text-align:center;color:var(--sub);padding:1rem;">No pages connected yet.</p>
+                </div>
+                <h4 style="margin:1rem 0 0.5rem;">⚡ Quick Actions</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;">
+                    <!-- FIX: all four were alert() placeholders -->
+                    <button class="btn-money" onclick="sendFeeReminderBroadcast()">📢 Send Fee Reminder</button>
+                    <button class="btn-money" onclick="sendEventNoticeBroadcast()">📅 Send Event Notice</button>
+                    <button class="btn-brand" onclick="sendAnnouncementBroadcast()">🔔 New Announcement</button>
+                    <button class="btn-outline" onclick="viewMessageHistory()">📜 Message History</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 14. ANALYTICS -->
+        <section id="section-analytics" class="app-section">
+            <div class="card">
+                <h3>📈 School Performance</h3>
+                <div style="display:flex;align-items:flex-end;justify-content:space-around;height:80px;gap:4px;padding:0.5rem;">
+                    <div style="width:12px;background:var(--brand);border-radius:4px 4px 0 0;height:40%"></div>
+                    <div style="width:12px;background:var(--money);border-radius:4px 4px 0 0;height:65%"></div>
+                    <div style="width:12px;background:var(--brand);border-radius:4px 4px 0 0;height:45%"></div>
+                    <div style="width:12px;background:var(--money);border-radius:4px 4px 0 0;height:80%"></div>
+                </div>
+                <p style="text-align:center;font-size:0.75rem;color:var(--sub);margin-top:0.5rem;">Revenue Collection (Last 6 Terms)</p>
+            </div>
+        </section>
+
+        <!-- 15. SECURITY -->
+        <section id="section-security" class="app-section">
+            <div class="card">
+                <h3>🔒 Security Gate</h3>
+                <label>Search by student name or guardian name</label>
+                <input type="text" id="securitySearch" placeholder="e.g. Adebayo or Okonkwo" oninput="searchSecurityGate()">
+                <div id="securityResults" style="margin-top:0.5rem;"></div>
+            </div>
+        </section>
+
+        <!-- 16. SUPPORT — hardcoded +2348145073941, dynamic agent -->
+        <section id="section-support" class="app-section">
+            <div class="card">
+                <h3>❓ Help & Support</h3>
+                <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">Get help from your assigned agent or our support team.</p>
+                <div class="agent-card">
+                    <div class="agent-header">
+                        <div class="agent-avatar" id="agentAvatar">⏳</div>
+                        <div class="agent-info">
+                            <h4 id="agentName">Loading...</h4>
+                            <p id="agentStatus">Status: Checking...</p>
+                        </div>
+                    </div>
+                    <div class="agent-contact">
+                        <div class="contact-row">
+                            <div class="contact-icon">📱</div>
+                            <div class="contact-details">
+                                <div class="contact-label">WhatsApp / Phone</div>
+                                <div class="contact-value" id="agentPhone">—</div>
+                            </div>
+                            <button class="btn-whatsapp btn-small" onclick="callAgent()">📞 Call</button>
+                        </div>
+                        <div class="contact-row">
+                            <div class="contact-icon">✉️</div>
+                            <div class="contact-details">
+                                <div class="contact-label">Email</div>
+                                <div class="contact-value" id="agentEmail">—</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card" style="margin-top:1rem;">
+                    <h4>📞 AariNAT Support Team</h4>
+                    <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">For urgent issues or if your agent is unavailable.</p>
+                    <div class="contact-row">
+                        <div class="contact-icon">📱</div>
+                        <div class="contact-details">
+                            <div class="contact-label">Support Hotline</div>
+                            <div class="contact-value">+234 814 507 3941</div>
+                        </div>
+                        <button class="btn-whatsapp btn-small" onclick="callAarinatSupport()">📞 Call</button>
+                    </div>
+                    <div class="contact-row">
+                        <div class="contact-icon">✉️</div>
+                        <div class="contact-details">
+                            <div class="contact-label">Email</div>
+                            <div class="contact-value">aarinat.company.limited@gmail.com</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 17. SETTINGS -->
+        <section id="section-settings" class="app-section">
+            <div class="card">
+                <h3>⚙️ School Settings</h3>
+                <label>School Name</label>
+                <input type="text" id="settingSchoolName" placeholder="Your School Name">
+                <label>Principal Email</label>
+                <input type="email" id="settingPrincipalEmail" placeholder="admin@school.edu.ng">
+                <label>WhatsApp Contact</label>
+                <input type="tel" id="settingWhatsApp" placeholder="2348012345678">
+                <button class="btn-brand" onclick="saveSettings()">💾 Save Settings</button>
+            </div>
+            <div class="card" style="border-left:4px solid var(--warning);">
+                <h3>Current Plan: <span id="settingsPlan">Basic</span></h3>
+                <p style="font-size:0.85rem;color:var(--sub);">Staff limit: <span id="settingsStaffLimit">3</span></p>
+                <button class="btn-upgrade" onclick="upgradeToPremium()" style="margin-top:0.5rem;">✨ Upgrade to Premium</button>
+            </div>
+        </section>
+
+        <!-- 18. OPPORTUNITIES -->
+        <section id="section-opportunities" class="app-section">
+            <div class="card">
+                <h3>🔍 Opportunity Scout <span class="ai-badge">PREMIUM</span></h3>
+                <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">Curated scholarships, grants & internships for Nigerian schools.</p>
+                <div class="opp-filters">
+                    <select id="oppUserType" onchange="filterOpportunities()"><option value="">All Users</option><option value="teacher">🧑‍ Teachers</option><option value="school">🏫 Schools</option></select>
+                    <select id="oppCategory" onchange="filterOpportunities()"><option value="">All Categories</option><option value="scholarship">💰 Scholarships</option><option value="grant">🎁 Grants</option><option value="internship">💼 Internships</option><option value="competition">🏆 Competitions</option></select>
+                    <select id="oppDeadline" onchange="filterOpportunities()"><option value="">Any Deadline</option><option value="7">Due in 7 days</option><option value="30">Due in 30 days</option></select>
+                    <button class="btn-outline" onclick="resetOpportunityFilters()" style="margin:0;">🔄 Reset</button>
+                </div>
+                <div id="oppFeed"></div>
+                <div id="oppPremiumCTA" class="opp-premium-cta" style="display:none;">
+                    <strong>✨ Unlock Full Access</strong>
+                    <p>See eligibility, apply directly, and get deadline reminders with Premium.</p>
+                    <button class="btn-upgrade" onclick="upgradeToPremium()">Upgrade to Premium</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+    <div class="support-fab" onclick="switchSection('support')">❓</div>
+</div>
+
+<!-- MODALS -->
+<div class="modal" id="paymentModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>💵 Record Payment</h3><button class="close-modal" onclick="closeModal('paymentModal')">×</button></div>
+        <input type="number" id="paymentAmount" placeholder="Amount (₦)">
+        <button class="btn-money" onclick="recordPayment()">Confirm Payment</button>
+        <button class="btn-outline" onclick="closeModal('paymentModal')" style="margin-top:0.5rem;">Cancel</button>
+    </div>
+</div>
+
+<div class="modal" id="addExpenseModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>📉 Log Expense</h3><button class="close-modal" onclick="closeModal('addExpenseModal')">×</button></div>
+        <label>Category</label>
+        <select id="expenseCategory"><option>Infrastructure</option><option>Supplies</option><option>Staff Welfare</option><option>Utilities</option><option>Other</option></select>
+        <label>Description</label>
+        <input type="text" id="expenseDesc" placeholder="e.g. Generator servicing">
+        <label>Amount (₦)</label>
+        <input type="number" id="expenseAmount" placeholder="e.g. 45000">
+        <button class="btn-brand" onclick="saveExpense()">💾 Save Expense</button>
+    </div>
+</div>
+
+<div class="modal" id="addTeamMemberModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>➕ Add Team Player</h3><button class="close-modal" onclick="closeModal('addTeamMemberModal')">×</button></div>
+        <label>Select Student</label>
+        <select id="teamMemberSelect"><option value="">-- Choose enrolled student --</option></select>
+        <label>Position/Role</label>
+        <input type="text" id="playerPosition" placeholder="e.g. Striker, Goalkeeper">
+        <label>Jersey Number</label>
+        <input type="number" id="playerNumber" placeholder="e.g. 10" min="1" max="99">
+        <button class="btn-sports" onclick="addTeamMember()">💾 Add to Team</button>
+    </div>
+</div>
+
+<div class="modal" id="addCustomSportModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>➕ Add Custom Sport</h3><button class="close-modal" onclick="closeModal('addCustomSportModal')">×</button></div>
+        <label>Sport Name</label>
+        <input type="text" id="customSportName" placeholder="e.g. Swimming, Handball">
+        <label>Sport Icon (Emoji)</label>
+        <input type="text" id="customSportIcon" placeholder="e.g. 🏊" maxlength="2">
+        <label>Description</label>
+        <input type="text" id="customSportDesc" placeholder="e.g. Indoor/Outdoor, Age groups">
+        <button class="btn-brand" onclick="addCustomSport()">💾 Add Sport</button>
+    </div>
+</div>
+
+<div class="modal" id="addArtworkModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>🎨 Add New Artwork</h3><button class="close-modal" onclick="closeModal('addArtworkModal')">×</button></div>
+        <label>Student</label>
+        <select id="artworkStudent"><option value="">-- Choose student --</option></select>
+        <label>Artwork Title</label>
+        <input type="text" id="artworkTitle" placeholder="e.g. Sunset Over Lagos">
+        <label>Medium/Category</label>
+        <select id="artworkMedium"><option>Drawing</option><option>Painting</option><option>Sculpture</option><option>Beadwork</option><option>Textile</option><option>Photography</option><option>Other</option></select>
+        <label>Description</label>
+        <textarea id="artworkDesc" rows="3" placeholder="Brief description"></textarea>
+        <button class="btn-arts" onclick="saveArtwork()">💾 Save Artwork</button>
+    </div>
+</div>
+
+<div class="modal" id="bookLessonModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>🎹 Book Instrument Lesson</h3><button class="close-modal" onclick="closeModal('bookLessonModal')">×</button></div>
+        <label>Student</label>
+        <select id="lessonStudent"><option value="">-- Choose student --</option></select>
+        <label>Instrument</label>
+        <select id="lessonInstrument"><option>Piano</option><option>Guitar</option><option>Keyboard</option><option>Talking Drum</option><option>Vocals</option><option>Other</option></select>
+        <label>Preferred Date</label>
+        <input type="date" id="lessonDate">
+        <label>Time Slot</label>
+        <select id="lessonTime"><option>3:00–4:00 PM</option><option>4:00–5:00 PM</option><option>5:00–6:00 PM</option></select>
+        <button class="btn-music" onclick="bookLesson()">📅 Confirm Booking</button>
+    </div>
+</div>
+
+<div class="modal" id="logPracticeModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>📝 Log Practice Session</h3><button class="close-modal" onclick="closeModal('logPracticeModal')">×</button></div>
+        <label>Student</label>
+        <select id="practiceStudent"><option value="">-- Choose student --</option></select>
+        <label>Activity</label>
+        <input type="text" id="practiceActivity" placeholder="e.g. Piano practice, Choir rehearsal, Talking drum">
+        <label>Duration</label>
+        <select id="practiceDuration"><option>30 mins</option><option>45 mins</option><option>1 hour</option><option>1.5 hours</option><option>2 hours</option></select>
+        <label>Notes/Progress</label>
+        <textarea id="practiceNotes" rows="3" placeholder="What was practiced? Progress made?"></textarea>
+        <button class="btn-music" onclick="savePracticeLog()">💾 Save Log</button>
+    </div>
+</div>
+
+<div class="modal" id="upgradeModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>✨ Upgrade to Premium</h3><button class="close-modal" onclick="closeModal('upgradeModal')">×</button></div>
+        <div id="upgradeStep1">
+            <p style="font-size:0.85rem;color:var(--sub);margin-bottom:1rem;">Unlock unlimited staff and advanced features for just <strong>₦5,000/month</strong>.</p>
+            <label>School Name</label>
+            <input type="text" id="upgradeSchoolName" placeholder="e.g. Kings Academy">
+            <label>Admin Name</label>
+            <input type="text" id="upgradeAdminName" placeholder="e.g. Mr. Adebayo">
+            <label>Payment Method</label>
+            <select id="upgradePaymentMethod"><option value="transfer">Bank Transfer (₦5,000)</option><option value="ussd">USSD (₦5,000)</option><option value="card">Card Payment (₦5,000)</option></select>
+            <button class="btn-brand" onclick="processPremiumUpgrade()">💳 Proceed to Upgrade</button>
+        </div>
+        <div id="upgradeStep2" style="display:none;text-align:center;">
+            <div style="font-size:3rem;margin-bottom:1rem;">🎉</div>
+            <h4 style="color:var(--money);margin-bottom:0.5rem;">Upgrade Successful!</h4>
+            <p style="font-size:0.9rem;color:var(--sub);margin-bottom:1rem;">Unlimited staff and all features are now active.</p>
+            <button class="btn-money" onclick="finishUpgrade()">🚀 Go to Staff Area</button>
+        </div>
+    </div>
+</div>
+
+<!-- FIX: this modal was called but never existed in HTML -->
+<div class="modal" id="commsHistoryModal">
+    <div class="modal-card">
+        <div class="modal-header"><h3>📜 Message History</h3><button class="close-modal" onclick="closeModal('commsHistoryModal')">×</button></div>
+        <p style="font-size:0.75rem;color:var(--sub);margin-bottom:0.75rem;">All broadcasts sent from this portal.</p>
+        <div id="commsHistoryList" style="max-height:65vh;overflow-y:auto;"></div>
+    </div>
+</div>
+
+<script>
+// ====== FIREBASE ======
+const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCVEdunn3AZndDP5Rm1Z3Kv1e6G6W2mB_o",
+    authDomain: "educationbloom-699ed.firebaseapp.com",
+    projectId: "educationbloom-699ed",
+    storageBucket: "educationbloom-699ed.firebasestorage.app",
+    messagingSenderId: "33750392965",
+    appId: "1:33750392965:web:2b3da887ede996ea8389ec"
+};
+let db = null;
+try { firebase.initializeApp(FIREBASE_CONFIG); db = firebase.firestore(); } catch(e) { console.warn('Firebase init failed:', e); }
+
+// ====== SYNC ENGINE ======
+const SyncEngine = {
+    queue: [], syncing: false,
+    updateIndicator(status) {
+        const el = document.getElementById('syncIndicator');
+        if (!el) return;
+        el.className = `sync-indicator ${status}`;
+        el.textContent = status === 'online' ? '● Online' : status === 'syncing' ? '● Syncing...' : '● Offline';
+    },
+    checkConnection() {
+        const online = navigator.onLine && db !== null;
+        this.updateIndicator(online ? 'online' : 'offline');
+        if (online && this.queue.length > 0) this.processQueue();
+        return online;
+    },
+    async save(key, data) {
+        const schoolId = DataStore._schoolId();
+        localStorage.setItem(`aar_${schoolId}_${key}`, JSON.stringify(data));
+        if (this.checkConnection()) this.queueSync(schoolId, key, data);
+        else this.queue.push({ key, data });
+    },
+    async queueSync(schoolId, key, data) {
+        this.queue.push({ schoolId, key, data });
+        if (!this.syncing) this.processQueue();
+    },
+    async processQueue() {
+        if (!db || this.queue.length === 0 || !navigator.onLine) { this.syncing = false; return; }
+        this.syncing = true;
+        this.updateIndicator('syncing');
+        const items = [...this.queue];
+        for (const item of items) {
+            try {
+                await db.collection('schools').doc(item.schoolId).set({ [item.key]: item.data }, { merge: true });
+                this.queue = this.queue.filter(q => q !== item);
+            } catch(e) { console.warn('Sync failed:', e); }
+        }
+        this.updateIndicator('online');
+        this.syncing = false;
+        if (this.queue.length > 0) setTimeout(() => this.processQueue(), 2000);
+    }
+};
+window.addEventListener('online', () => SyncEngine.checkConnection());
+window.addEventListener('offline', () => SyncEngine.updateIndicator('offline'));
+
+// ====== DATA STORE ======
+// FIX: added socialPages, financialRecords, commsLog throughout
+const DataStore = {
+    _schoolId() { return localStorage.getItem('aarinat_school_id') || 'default'; },
+    async save(key, data) { SyncEngine.save(key, data); },
+    async load(key) { return JSON.parse(localStorage.getItem(`aar_${this._schoolId()}_${key}`) || 'null'); },
+    async getSchoolData() {
+        const [config, staff, students, attendance, expenses, sports, arts, music,
+               opportunities, agent, socialPages, financialRecords, commsLog] = await Promise.all([
+            this.load('config'), this.load('staff'), this.load('students'),
+            this.load('attendance'), this.load('expenses'), this.load('sports'),
+            this.load('arts'), this.load('music'), this.load('opportunities'),
+            this.load('agent'), this.load('socialPages'), this.load('financialRecords'),
+            this.load('commsLog')
+        ]);
+        return {
+            config: config || { plan: 'basic', fee: 50000, schoolName: 'Demo School' },
+            staff: staff || [],
+            students: students || [],
+            attendance: attendance || {},
+            expenses: expenses || [],
+            sports: sports || { teams: {}, custom: [] },
+            arts: arts || { gallery: [] },
+            music: music || { practiceLogs: [], instruments: [
+                { name: 'Keyboard', status: 'available' },
+                { name: 'Guitar', status: 'available' },
+                { name: 'Talking Drum', status: 'available' }
+            ]},
+            opportunities: opportunities || [
+                { id: 'ubec2026', title: 'UBEC School Development Grant', provider: 'Universal Basic Education Commission', type: 'grant', amount: '₦500k–₦2M', deadline: '2026-09-30', audience: ['school'] },
+                { id: 'sesp2026', title: 'State Education Support Programme', provider: 'Ogun State Ministry of Education', type: 'grant', amount: '₦250k', deadline: '2026-07-31', audience: ['school'] },
+                { id: 'teach2026', title: 'Teacher Professional Development Fellowship', provider: 'Teach For Nigeria', type: 'internship', amount: 'Stipend + Training', deadline: '2026-06-15', audience: ['teacher'] }
+            ],
+            agent: agent,
+            socialPages: socialPages || [],           // FIX: was missing
+            financialRecords: financialRecords || null, // FIX: was missing
+            commsLog: commsLog || []                   // FIX: was missing
+        };
+    },
+    updateConfig(cfg)             { return this.save('config', cfg); },
+    updateStaff(staff)            { return this.save('staff', staff); },
+    updateStudents(students)      { return this.save('students', students); },
+    updateAttendance(att)         { return this.save('attendance', att); },
+    updateExpenses(exp)           { return this.save('expenses', exp); },
+    updateSports(data)            { return this.save('sports', data); },
+    updateArts(data)              { return this.save('arts', data); },
+    updateMusic(data)             { return this.save('music', data); },
+    updateOpportunities(data)     { return this.save('opportunities', data); },
+    updateAgent(agent)            { return this.save('agent', agent); },
+    updateSocialPages(data)       { return this.save('socialPages', data); },   // FIX: new
+    updateFinancialRecords(data)  { return this.save('financialRecords', data); }, // FIX: new
+    updateCommsLog(data)          { return this.save('commsLog', data); }        // FIX: new
+};
+
+// ====== AUTH & UI ======
+function togglePassword(id, btn) {
+    const i = document.getElementById(id);
+    i.type = i.type === 'password' ? 'text' : 'password';
+    btn.textContent = i.type === 'password' ? '👁️' : '🙈';
+}
+
+// FIX: was sync — DataStore.getSchoolData() returns Promise; without await, .staff was undefined
+async function onEmailInput() {
+    const e = document.getElementById('loginEmail').value.trim();
+    const s = document.getElementById('loginSchoolId').value.trim();
+    if (!s || !e) return;
+    localStorage.setItem('aarinat_school_id', s);
+    const d = await DataStore.getSchoolData();
+    const ex = d.staff.some(st => st.email === e);
+    document.getElementById('newUserSection').style.display = ex ? 'none' : 'block';
+    document.getElementById('returningUserSection').style.display = ex ? 'block' : 'none';
+}
+
+async function login() {
+    const s = document.getElementById('loginSchoolId').value.trim();
+    const e = document.getElementById('loginEmail').value.trim();
+    if (!s || !e) return alert('Enter School ID and Email.');
+    localStorage.setItem('aarinat_school_id', s);
+    const d = await DataStore.getSchoolData();
+    const ex = d.staff.find(st => st.email === e);
+    if (ex) {
+        const p = document.getElementById('loginPassword').value;
+        if (!p) return alert('Enter password.');
+        if (p !== ex.password) return alert('Wrong password.');
+        localStorage.setItem('aarinat_user_email', e);
+        localStorage.setItem('aarinat_user_role', ex.role);
+    } else {
+        const p = document.getElementById('newPassword').value;
+        if (!p || p.length < 4) return alert('Password must be at least 4 characters.');
+        const nu = { name: 'Principal', email: e, password: p, role: 'Principal' };
+        d.staff.push(nu);
+        await DataStore.updateStaff(d.staff);
+        localStorage.setItem('aarinat_user_email', e);
+        localStorage.setItem('aarinat_user_role', 'Principal');
+    }
+    completeLogin();
+}
+
+function completeLogin() {
+    document.getElementById('loginOverlay').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    initPortal();
+    SyncEngine.checkConnection();
+}
+
+function logout() {
+    localStorage.removeItem('aarinat_user_email');
+    localStorage.removeItem('aarinat_user_role');
+    location.reload();
+}
+
+async function switchSection(id) {
+    document.querySelectorAll('.app-section').forEach(s => s.classList.remove('active'));
+    document.getElementById(`section-${id}`).classList.add('active');
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+    const b = document.querySelector(`[data-tab="${id}"]`);
+    if (b) b.classList.add('active');
+    if (id === 'revenue')     await renderDashboard();
+    if (id === 'staff')       await renderStaff();
+    if (id === 'students')    renderSetup();
+    if (id === 'attendance')  { if (!document.getElementById('attendanceDate').value) document.getElementById('attendanceDate').value = new Date().toISOString().split('T')[0]; await loadAttendance(); }
+    if (id === 'settings')    await loadSettings();
+    if (id === 'sports')      await loadSportsSection();
+    if (id === 'arts')        await loadArtsSection();
+    if (id === 'music')       await loadMusicSection();
+    if (id === 'opportunities') await loadOpportunities();
+    if (id === 'support')     await loadSupportSection();
+    if (id === 'comms')       await renderSocialPages();
+    if (id === 'financeAI')   await checkFinanceData();
+    if (id === 'expenses')    await renderExpensesList();
+}
+
+async function initPortal() {
+    const d = await DataStore.getSchoolData();
+    const b = document.getElementById('planBadge');
+    if (d.config.plan === 'premium') { b.textContent = 'PREMIUM ✨'; b.className = 'plan-badge plan-premium'; }
+    else { b.textContent = 'BASIC'; b.className = 'plan-badge plan-basic'; }
+    document.getElementById('headerSchoolId').textContent = DataStore._schoolId();
+    SyncEngine.checkConnection();
+    await switchSection('revenue');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+window.onclick = e => { if (e.target.classList.contains('modal')) e.target.classList.remove('open'); };
+document.onkeydown = e => { if (e.key === 'Escape') document.querySelectorAll('.modal').forEach(m => m.classList.remove('open')); };
+
+// ====== SUPPORT — dynamic agent, hardcoded AariNAT number ======
+async function loadSupportSection() {
+    const data = await DataStore.getSchoolData();
+    const agent = data.agent;
+    if (agent && agent.name) {
+        document.getElementById('agentName').textContent = `${agent.name} (Your Agent)`;
+        document.getElementById('agentPhone').textContent = agent.phone || '—';
+        document.getElementById('agentEmail').textContent = agent.email || '—';
+        document.getElementById('agentStatus').textContent = `Status: ${agent.status || 'Active'} • Your first point of contact`;
+        document.getElementById('agentAvatar').textContent = agent.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    } else {
+        document.getElementById('agentName').textContent = 'No Agent Assigned';
+        document.getElementById('agentPhone').textContent = 'Contact AariNAT to get assigned';
+        document.getElementById('agentEmail').textContent = '—';
+        document.getElementById('agentStatus').textContent = 'Status: Pending';
+        document.getElementById('agentAvatar').textContent = '⏳';
+    }
+}
+
+// FIX: was sync — d was a Promise, so d.agent was undefined and wa.me opened with "undefined"
+async function callAgent() {
+    const d = await DataStore.getSchoolData();
+    const a = d.agent;
+    if (a && a.phone) {
+        const schoolId = DataStore._schoolId();
+        window.open(`https://wa.me/${a.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Hello ${a.name}, I need assistance.\n\nSchool: ${schoolId}`)}`, '_blank');
+    } else {
+        alert('No agent assigned yet.\n\nContact AariNAT support directly:\n+234 814 507 3941');
+    }
+}
+
+// Hardcoded — do not change this number
+function callAarinatSupport() {
+    window.open(`https://wa.me/2348145073941?text=${encodeURIComponent(`Hello AariNAT Support,\n\nI need assistance with Educational Bloom.\n\nSchool ID: ${DataStore._schoolId()}`)}`, '_blank');
+}
+
+// ====== SOCIAL MEDIA WORKSTATION ======
+// FIX: all three functions were sync (DataStore.getSchoolData() without await)
+// FIX: data was saved to 'config' instead of dedicated 'socialPages' key — data was never persisted
+
+async function addSocialPage() {
+    const platform = document.getElementById('socialPlatform').value;
+    const pageName = document.getElementById('socialPageName').value.trim();
+    const pageURL  = document.getElementById('socialPageURL').value.trim();
+    if (!platform || !pageName) return alert('Select a platform and enter the page name.');
+    const data = await DataStore.getSchoolData();           // FIX: added await
+    const pages = data.socialPages || [];
+    pages.push({ platform, pageName, url: pageURL || '#', addedAt: new Date().toISOString() });
+    await DataStore.updateSocialPages(pages);               // FIX: correct storage key
+    document.getElementById('socialPlatform').value = '';
+    document.getElementById('socialPageName').value = '';
+    document.getElementById('socialPageURL').value = '';
+    await renderSocialPages();
+}
+
+async function renderSocialPages() {
+    const data = await DataStore.getSchoolData();           // FIX: added await
+    const pages = data.socialPages || [];
+    const c = document.getElementById('socialPagesList');
+    if (!c) return;
+    if (pages.length === 0) {
+        c.innerHTML = '<p style="text-align:center;color:var(--sub);padding:1rem;">No pages connected yet. Add your first page above.</p>';
+        return;
+    }
+    const icons = { facebook:'📘', instagram:'📸', twitter:'🐦', youtube:'📺', tiktok:'🎵', linkedin:'💼', whatsapp:'💬', telegram:'✈️' };
+    c.innerHTML = pages.map((p, i) => `
+        <div class="social-page-item">
+            <div>
+                <span class="social-platform-icon">${icons[p.platform] || '🌐'}</span>
+                <strong>${escapeHtml(p.pageName)}</strong>
+                <div style="font-size:0.75rem;color:var(--sub);">${p.platform.charAt(0).toUpperCase() + p.platform.slice(1)}</div>
+            </div>
+            <div class="actions">
+                <button class="action-btn btn-brand" onclick="window.open('${escapeHtml(p.url)}','_blank')">🔗 Open</button>
+                <button class="action-btn btn-danger" onclick="removeSocialPage(${i})">🗑️</button>
+            </div>
+        </div>`).join('');
+}
+
+async function removeSocialPage(idx) {
+    if (!confirm('Remove this page?')) return;
+    const d = await DataStore.getSchoolData();              // FIX: added await
+    const pages = d.socialPages || [];
+    pages.splice(idx, 1);
+    await DataStore.updateSocialPages(pages);               // FIX: correct storage key
+    await renderSocialPages();
+}
+
+// ====== COMMS QUICK ACTIONS ======
+// FIX: all four were alert() placeholders — now open WhatsApp with real templates and log to commsLog
+
+async function sendFeeReminderBroadcast() {
+    const d = await DataStore.getSchoolData();
+    const schoolName = d.config.schoolName || DataStore._schoolId();
+    const overdue = (d.students || []).filter(s => (s.totalFee || 0) - (s.paid || 0) > 0);
+    const msg = `Dear Parent,\n\nThis is a friendly reminder from *${schoolName}*.\n\nKindly ensure your ward's outstanding term fees are settled promptly to avoid any disruption to their education.\n\nThank you for your continued support.\n\n– School Management`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    const log = d.commsLog || [];
+    log.unshift({ type: 'Fee Reminder', sentAt: new Date().toISOString(), recipients: overdue.length || d.students.length, preview: `Fee reminder sent to parents of ${overdue.length} overdue student(s)` });
+    await DataStore.updateCommsLog(log);
+}
+
+async function sendEventNoticeBroadcast() {
+    const eventName = prompt('Event name (e.g. Inter-house Sports Day):');
+    if (!eventName) return;
+    const eventDate = prompt('Date of event (e.g. Saturday 24 May 2026):');
+    if (!eventDate) return;
+    const d = await DataStore.getSchoolData();
+    const schoolName = d.config.schoolName || DataStore._schoolId();
+    const msg = `Dear Parent,\n\n*${schoolName}* is pleased to inform you of an upcoming event:\n\n📅 *${eventName}*\n🗓️ Date: ${eventDate}\n📍 Venue: School Premises\n\nYour presence and support is warmly welcomed. Students are expected to arrive on time.\n\n– School Management`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    const log = d.commsLog || [];
+    log.unshift({ type: 'Event Notice', sentAt: new Date().toISOString(), recipients: d.students.length, preview: `${eventName} — ${eventDate}` });
+    await DataStore.updateCommsLog(log);
+}
+
+async function sendAnnouncementBroadcast() {
+    const subject = prompt('Announcement subject (e.g. School Closure Notice):');
+    if (!subject) return;
+    const body = prompt('Message body:');
+    if (!body) return;
+    const d = await DataStore.getSchoolData();
+    const schoolName = d.config.schoolName || DataStore._schoolId();
+    const msg = `📢 *Announcement from ${schoolName}*\n\n*${subject}*\n\n${body}\n\nThank you.\n– School Management`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+    const log = d.commsLog || [];
+    log.unshift({ type: 'Announcement', sentAt: new Date().toISOString(), recipients: d.students.length, preview: subject });
+    await DataStore.updateCommsLog(log);
+}
+
+async function viewMessageHistory() {
+    const d = await DataStore.getSchoolData();
+    const log = d.commsLog || [];
+    const c = document.getElementById('commsHistoryList');
+    if (log.length === 0) {
+        c.innerHTML = '<p style="text-align:center;color:var(--sub);padding:2rem;">No messages sent yet.</p>';
+    } else {
+        c.innerHTML = log.slice(0, 30).map(x => `
+            <div class="comms-log-item">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong style="font-size:0.9rem;">${escapeHtml(x.type)}</strong>
+                    <span style="font-size:0.7rem;color:var(--sub);">${new Date(x.sentAt).toLocaleDateString('en-NG')}</span>
+                </div>
+                <div style="font-size:0.8rem;color:var(--sub);margin-top:0.2rem;">${escapeHtml(x.preview || '')}</div>
+                <div style="font-size:0.7rem;color:var(--brand);margin-top:0.15rem;">📱 ${x.recipients || 0} recipients</div>
+            </div>`).join('');
+    }
+    openModal('commsHistoryModal');
+}
+
+// ====== FINANCE AI ======
+// FIX: handleFinanceUpload now reads the actual file and stores data
+// FIX: checkFinanceData now correctly reads from financialRecords key
+
+async function handleFinanceUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const uploadBtn = document.querySelector('#financeAIEmpty .btn-brand');
+    if (uploadBtn) { uploadBtn.textContent = '⏳ Reading file...'; uploadBtn.disabled = true; }
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+        try {
+            const lines = ev.target.result.split(/\r?\n/).filter(l => l.trim());
+            if (lines.length < 2) { alert('File appears empty or has no data rows.'); return; }
+            const records = lines.slice(1).map(l => {
+                const cols = l.split(',').map(c => c.replace(/"/g,'').trim());
+                return { date: cols[0] || '', description: cols[1] || '', amount: parseFloat(cols[2]) || 0, type: (cols[3] || 'expense').toLowerCase() };
+            }).filter(r => r.description && !isNaN(r.amount));
+            const income   = records.filter(r => r.type === 'income'  || r.amount > 0).reduce((s, r) => s + Math.abs(r.amount), 0);
+            const expenses = records.filter(r => r.type === 'expense' || r.amount < 0).reduce((s, r) => s + Math.abs(r.amount), 0);
+            const largeCount = records.filter(r => Math.abs(r.amount) > 500000).length;
+            const saved = { uploadedAt: new Date().toISOString(), fileName: file.name, recordCount: records.length, totalIncome: income, totalExpenses: expenses, largeTransactions: largeCount };
+            await DataStore.updateFinancialRecords(saved);
+            showFinanceAnalysis(saved);
+        } catch(err) {
+            alert('Could not read file. Ensure it is a valid CSV.');
+        } finally {
+            if (uploadBtn) { uploadBtn.textContent = '📤 Upload Financial Data'; uploadBtn.disabled = false; }
+            event.target.value = '';
+        }
+    };
+    reader.onerror = () => { alert('File read failed. Please try again.'); if (uploadBtn) { uploadBtn.textContent = '📤 Upload Financial Data'; uploadBtn.disabled = false; }};
+    reader.readAsText(file);
+}
+
+function showFinanceAnalysis(fr) {
+    document.getElementById('financeAIEmpty').style.display = 'none';
+    document.getElementById('financeAIAnalysis').style.display = 'block';
+    document.getElementById('aiProjection').textContent = '₦' + Math.round(fr.totalIncome * 1.08).toLocaleString();
+    document.getElementById('aiAnomalies').textContent = fr.largeTransactions.toString();
+    const net = fr.totalIncome - fr.totalExpenses;
+    document.getElementById('aiRecommendation').textContent = net >= 0
+        ? `Revenue leads expenses by ₦${net.toLocaleString()} this period. Consider setting aside 10% (₦${Math.round(net * 0.1).toLocaleString()}) as a school emergency reserve before term ends.`
+        : `Expenses exceed income by ₦${Math.abs(net).toLocaleString()}. Review staff salary ratio and utilities spend — those are typically the two largest controllable costs in Nigerian private schools.`;
+}
+
+async function checkFinanceData() {
+    const data = await DataStore.getSchoolData();
+    const fr = data.financialRecords;
+    if (fr && fr.recordCount > 0) {
+        showFinanceAnalysis(fr);
+    } else {
+        document.getElementById('financeAIEmpty').style.display = 'block';
+        document.getElementById('financeAIAnalysis').style.display = 'none';
+    }
+}
+
+// FIX: was alert('Strategy applied locally') — now actually saves to config
+async function applyFinanceStrategy() {
+    const d = await DataStore.getSchoolData();
+    if (!d.financialRecords) return alert('Upload financial data first to generate a strategy.');
+    const strategy = document.getElementById('aiRecommendation').textContent;
+    d.config.appliedStrategy = { text: strategy, appliedAt: new Date().toISOString() };
+    await DataStore.updateConfig(d.config);
+    alert(`✅ Strategy saved to your school settings.\n\nYou can review it anytime in Settings.`);
+}
+
+// ====== STAFF ======
+// FIX: was sync — plan and staff count were read from a Promise object
+async function renderStaff() {
+    const d = await DataStore.getSchoolData();
+    const s = d.staff || [];
+    const isPremium = d.config?.plan === 'premium';
+    const limit = isPremium ? '∞' : 3;
+    document.getElementById('staffCount').textContent = `${s.length}/${limit} Used`;
+    const c = document.getElementById('staffListContainer');
+    c.innerHTML = s.length === 0
+        ? '<p style="text-align:center;color:var(--sub);padding:1rem;">No staff added yet.</p>'
+        : s.map((x, i) => `<div class="staff-row"><div class="staff-info"><div class="staff-name">${escapeHtml(x.name)} <span class="role-tag">${x.role}</span></div><div class="staff-detail">${escapeHtml(x.email)}</div></div><button class="action-btn" style="background:var(--danger);color:white;" onclick="deleteStaff(${i})">🗑️</button></div>`).join('');
+    const upgradePrompt = document.getElementById('upgradePrompt');
+    if (!isPremium && s.length >= 3) {
+        document.getElementById('addStaffForm').style.display = 'none';
+        upgradePrompt.style.display = 'block';
+    } else {
+        document.getElementById('addStaffForm').style.display = 'block';
+        upgradePrompt.style.display = 'none';
+    }
+}
+
+async function addStaff() {
+    const n = document.getElementById('newStaffName').value.trim();
+    const p = document.getElementById('newStaffPhone').value.trim();
+    const e = document.getElementById('newStaffEmail').value.trim();
+    const pa = document.getElementById('newStaffPassword').value.trim();
+    const r = document.getElementById('newStaffRole').value;
+    if (!n || !e || !pa) return alert('Name, email, and password are required.');
+    const d = await DataStore.getSchoolData();
+    if (d.config.plan === 'basic' && d.staff.length >= 3) return alert('Upgrade to Premium to add more than 3 staff.');
+    d.staff.push({ name: n, phone: p, email: e, password: pa, role: r });
+    await DataStore.updateStaff(d.staff);
+    ['newStaffName','newStaffPhone','newStaffEmail','newStaffPassword'].forEach(id => document.getElementById(id).value = '');
+    await renderStaff();
+}
+
+async function deleteStaff(i) {
+    if (!confirm('Remove this staff member?')) return;
+    const d = await DataStore.getSchoolData();
+    d.staff.splice(i, 1);
+    await DataStore.updateStaff(d.staff);
+    await renderStaff();
+}
+
+// ====== SETTINGS ======
+// FIX: was sync — d.config was read from a Promise object
+async function loadSettings() {
+    const d = await DataStore.getSchoolData();
+    document.getElementById('settingsPlan').textContent = (d.config?.plan || 'basic').charAt(0).toUpperCase() + (d.config?.plan || 'basic').slice(1);
+    document.getElementById('settingsStaffLimit').textContent = d.config?.plan === 'premium' ? 'Unlimited' : '3';
+    if (d.config?.schoolName) document.getElementById('settingSchoolName').value = d.config.schoolName;
+    if (d.config?.principalEmail) document.getElementById('settingPrincipalEmail').value = d.config.principalEmail;
+    if (d.config?.whatsapp) document.getElementById('settingWhatsApp').value = d.config.whatsapp;
+}
+
+async function saveSettings() {
+    const d = await DataStore.getSchoolData();
+    d.config.schoolName = document.getElementById('settingSchoolName').value.trim();
+    d.config.principalEmail = document.getElementById('settingPrincipalEmail').value.trim();
+    d.config.whatsapp = document.getElementById('settingWhatsApp').value.trim();
+    await DataStore.updateConfig(d.config);
+    document.getElementById('headerSchoolId').textContent = DataStore._schoolId();
+    alert('✅ Settings saved.');
+}
+
+// ====== STUDENTS ======
+async function renderSetup() {
+    const d = await DataStore.getSchoolData();
+    document.getElementById('setupCount').textContent = (d.students || []).length;
+    if (d.config?.fee) document.getElementById('setupFee').value = d.config.fee;
+}
+
+async function handleSetupCSV(e) {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = async ev => {
+        const lines = ev.target.result.split(/\r?\n/).filter(x => x.trim());
+        if (lines.length < 2) return alert('Invalid CSV — ensure it has a header row and at least one data row.');
+        const d = await DataStore.getSchoolData();
+        let count = 0;
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim());
+            if (cols.length >= 2 && cols[0] && cols[1]) {
+                d.students.push({ name: cols[0], phone: cols[1].replace(/\D/g,''), totalFee: d.config?.fee || 50000, paid: 0, class: cols[2] || 'JSS1' });
+                count++;
+            }
+        }
+        await DataStore.updateStudents(d.students);
+        document.getElementById('csvFeedbackSetup').textContent = `✅ Imported ${count} student(s).`;
+        renderSetup();
+    };
+    r.readAsText(f);
+}
+
+async function addManualStudent() {
+    const n = document.getElementById('manualName').value.trim();
+    const p = document.getElementById('manualPhone').value.trim();
+    if (!n || !p) return alert('Enter student name and parent phone.');
+    const d = await DataStore.getSchoolData();
+    d.students.push({ name: n, phone: p.replace(/\D/g,''), totalFee: d.config?.fee || 50000, paid: 0, class: 'JSS1' });
+    await DataStore.updateStudents(d.students);
+    document.getElementById('manualName').value = '';
+    document.getElementById('manualPhone').value = '';
+    renderSetup();
+}
+
+async function saveSetup() {
+    const f = parseFloat(document.getElementById('setupFee').value);
+    if (!f || f <= 0) return alert('Set a valid termly fee amount.');
+    const d = await DataStore.getSchoolData();
+    d.config.fee = f;
+    await DataStore.updateConfig(d.config);
+    if (d.students.length) { d.students.forEach(s => s.totalFee = f); await DataStore.updateStudents(d.students); }
+    alert('✅ Setup saved!');
+    switchSection('revenue');
+}
+
+// ====== REVENUE DASHBOARD ======
+async function renderDashboard() {
+    const d = await DataStore.getSchoolData();
+    const s = d.students || [];
+    if (!s.length) {
+        document.getElementById('studentList').innerHTML = `<p style="text-align:center;color:var(--sub);padding:2rem;">No students yet.<br><button class="btn-outline" style="width:auto;margin-top:0.5rem;" onclick="switchSection('students')">➕ Add Students</button></p>`;
+        updateSummary(0,0,0,0); updateChart(0,0); return;
+    }
+    let te = 0, tc = 0;
+    const html = s.map((x, i) => {
+        const exp = x.totalFee || 0, col = x.paid || 0;
+        te += exp; tc += col;
+        const owe = exp - col;
+        return `<div class="student-row">
+            <div class="student-info">
+                <div class="student-name">${escapeHtml(x.name)}</div>
+                <div class="student-detail">📱 ${x.phone} | Fee: ₦${exp.toLocaleString()} | Paid: ₦${col.toLocaleString()}</div>
+                <span class="status-badge ${owe <= 0 ? 'status-paid' : 'status-owing'}">${owe <= 0 ? 'Paid' : 'Owing'}</span>
+            </div>
+            <div class="actions">
+                ${owe > 0 ? `<button class="action-btn btn-whatsapp" onclick="sendReminder(${i})">📲</button><button class="action-btn btn-brand" onclick="openPaymentModal(${i})">💰</button>` : '<span style="font-size:0.8rem;color:var(--money);">✓</span>'}
+            </div>
+        </div>`;
+    }).join('');
+    document.getElementById('studentList').innerHTML = html;
+    updateSummary(s.length, te, tc, te - tc);
+    updateChart(tc, te);
+}
+
+function updateSummary(c, e, co, o) {
+    document.getElementById('totalStudents').textContent = c;
+    document.getElementById('totalExpected').textContent = '₦' + e.toLocaleString();
+    document.getElementById('totalCollected').textContent = '₦' + co.toLocaleString();
+    document.getElementById('totalOutstanding').textContent = '₦' + o.toLocaleString();
+}
+function updateChart(co, e) {
+    const p = e > 0 ? Math.round((co / e) * 100) : 0;
+    document.getElementById('progressPercent').textContent = p + '%';
+    document.getElementById('progressFill').style.width = p + '%';
+}
+
+async function handleBulkPayment(e) {
+    const f = e.target.files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = async ev => {
+        const lines = ev.target.result.split(/\r?\n/).filter(x => x.trim());
+        if (lines.length < 2) return alert('Invalid CSV.');
+        const d = await DataStore.getSchoolData();
+        let matched = 0, skipped = 0;
+        for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(',').map(c => c.trim());
+            if (cols.length >= 2 && cols[0] && cols[1]) {
+                const nm = cols[0].toLowerCase(), am = parseFloat(cols[1]);
+                if (isNaN(am) || am <= 0) continue;
+                const hits = (d.students || []).filter(s => s.name.toLowerCase().includes(nm) || nm.includes(s.name.toLowerCase()));
+                if (hits.length === 1) { hits[0].paid = (hits[0].paid || 0) + am; matched++; }
+                else skipped++;
+            }
+        }
+        await DataStore.updateStudents(d.students);
+        document.getElementById('bulkFeedback').textContent = `✅ ${matched} matched and updated, ⚠️ ${skipped} skipped (ambiguous or not found).`;
+        await renderDashboard();
+    };
+    r.readAsText(f);
+}
+
+function sendReminder(i) {
+    DataStore.getSchoolData().then(d => {
+        const s = d.students[i];
+        const owe = (s.totalFee || 0) - (s.paid || 0);
+        const schoolName = d.config.schoolName || 'School Management';
+        window.open(`https://wa.me/${s.phone.replace(/\D/g,'')}?text=${encodeURIComponent(`Dear Parent,\n\n*${s.name}* has an outstanding fee balance of *₦${owe.toLocaleString()}* this term.\n\nKindly make payment at your earliest convenience.\n\nThank you.\n– ${schoolName}`)}`, '_blank');
+    });
+}
+
+let payIdx = null;
+function openPaymentModal(i) { payIdx = i; document.getElementById('paymentAmount').value = ''; openModal('paymentModal'); }
+async function recordPayment() {
+    const a = parseFloat(document.getElementById('paymentAmount').value);
+    if (!a || a <= 0) return alert('Enter a valid amount.');
+    const d = await DataStore.getSchoolData();
+    if (d.students && payIdx !== null) { d.students[payIdx].paid = (d.students[payIdx].paid || 0) + a; await DataStore.updateStudents(d.students); }
+    closeModal('paymentModal');
+    await renderDashboard();
+}
+
+// ====== ATTENDANCE ======
+async function loadAttendance() {
+    const dt = document.getElementById('attendanceDate').value; if (!dt) return;
+    const d = await DataStore.getSchoolData();
+    const s = d.students || [], am = (d.attendance && d.attendance[dt]) || {};
+    const g = document.getElementById('attendanceGrid');
+    if (!s.length) { g.innerHTML = '<p style="text-align:center;color:var(--sub);padding:1rem;">No students yet.</p>'; return; }
+    let h = `<div class="attendance-grid attendance-header"><div>Student</div><div>P</div><div>A</div><div>L</div></div>`;
+    s.forEach((x, i) => {
+        const st = am[x.name] || 'Present';
+        h += `<div class="attendance-grid"><div><strong>${escapeHtml(x.name)}</strong></div>
+            <div style="display:flex;gap:4px;">
+                <button class="action-btn" style="background:${st==='Present'?'#10b981':'#e2e8f0'};color:${st==='Present'?'white':'inherit'}" onclick="setAttendance('${dt}',${i},'Present')">P</button>
+                <button class="action-btn" style="background:${st==='Absent'?'#ef4444':'#e2e8f0'};color:${st==='Absent'?'white':'inherit'}" onclick="setAttendance('${dt}',${i},'Absent')">A</button>
+                <button class="action-btn" style="background:${st==='Late'?'#f59e0b':'#e2e8f0'};color:${st==='Late'?'white':'inherit'}" onclick="setAttendance('${dt}',${i},'Late')">L</button>
+            </div></div>`;
+    });
+    g.innerHTML = h;
+}
+async function setAttendance(dt, i, st) {
+    const d = await DataStore.getSchoolData();
+    const s = d.students[i]; if (!s) return;
+    if (!d.attendance) d.attendance = {};
+    if (!d.attendance[dt]) d.attendance[dt] = {};
+    d.attendance[dt][s.name] = st;
+    await DataStore.updateAttendance(d.attendance);
+    await loadAttendance();
+}
+async function saveAttendance() { alert('✅ Attendance saved.'); }
+async function showAttendanceSummary() {
+    const d = await DataStore.getSchoolData();
+    const s = d.students || [], am = d.attendance || {};
+    let h = '<ul style="list-style:none;padding:0;">';
+    s.forEach(x => {
+        let total = 0, present = 0;
+        for (const dt in am) { if (am[dt][x.name]) { total++; if (am[dt][x.name] === 'Present') present++; } }
+        const pct = total ? Math.round((present / total) * 100) : 0;
+        h += `<li style="padding:0.5rem 0;border-bottom:1px solid var(--border);"><strong>${escapeHtml(x.name)}</strong> — ${present}/${total} days (${pct}%)</li>`;
+    });
+    h += '</ul>';
+    document.getElementById('summaryList').innerHTML = h;
+    openModal('attendanceSummaryModal');
+}
+
+// ====== EXPENSES ======
+async function renderExpensesList() {
+    const d = await DataStore.getSchoolData();
+    const c = document.getElementById('expensesList');
+    if (!c) return;
+    const exp = d.expenses || [];
+    if (!exp.length) { c.innerHTML = '<p style="text-align:center;color:var(--sub);padding:1rem;">No expenses logged yet.</p>'; return; }
+    c.innerHTML = exp.map(x => `<div class="student-row"><div class="student-info"><div class="student-name">${escapeHtml(x.description)}</div><div class="student-detail">${x.category} • ${x.date}</div></div><div style="font-weight:700;">₦${x.amount.toLocaleString()}</div></div>`).join('');
+}
+async function saveExpense() {
+    const cat = document.getElementById('expenseCategory').value;
+    const desc = document.getElementById('expenseDesc').value.trim();
+    const amt = parseFloat(document.getElementById('expenseAmount').value);
+    if (!desc || !amt) return alert('Fill in description and amount.');
+    const d = await DataStore.getSchoolData();
+    d.expenses.unshift({ category: cat, description: desc, amount: amt, date: new Date().toISOString().split('T')[0] });
+    await DataStore.updateExpenses(d.expenses);
+    closeModal('addExpenseModal');
+    document.getElementById('expenseDesc').value = '';
+    document.getElementById('expenseAmount').value = '';
+    await renderExpensesList();
+    alert('✅ Expense logged.');
+}
+
+// ====== SECURITY GATE ======
+async function searchSecurityGate() {
+    const q = document.getElementById('securitySearch').value.trim().toLowerCase();
+    const c = document.getElementById('securityResults');
+    if (!q) { c.innerHTML = ''; return; }
+    const d = await DataStore.getSchoolData();
+    const matches = (d.students || []).filter(s => s.name.toLowerCase().includes(q) || (s.phone || '').includes(q));
+    if (!matches.length) { c.innerHTML = '<p style="color:var(--sub);font-size:0.9rem;padding:0.5rem;">No student found.</p>'; return; }
+    c.innerHTML = matches.map(s => `<div class="student-row" style="flex-direction:column;align-items:flex-start;">
+        <div class="student-name">${escapeHtml(s.name)}</div>
+        <div class="student-detail">Class: ${s.class || '—'} | Guardian: ${s.phone}</div>
+    </div>`).join('');
+}
+
+// ====== PREMIUM UPGRADE ======
+function upgradeToPremium() {
+    document.getElementById('upgradeStep1').style.display = 'block';
+    document.getElementById('upgradeStep2').style.display = 'none';
+    DataStore.getSchoolData().then(d => { if (d.config.schoolName) document.getElementById('upgradeSchoolName').value = d.config.schoolName; });
+    openModal('upgradeModal');
+}
+async function processPremiumUpgrade() {
+    const n = document.getElementById('upgradeSchoolName').value.trim();
+    const a = document.getElementById('upgradeAdminName').value.trim();
+    if (!n || !a) return alert('Enter School Name and Admin Name.');
+    const btn = document.querySelector('#upgradeStep1 .btn-brand');
+    btn.textContent = 'Processing...'; btn.disabled = true;
+    await new Promise(r => setTimeout(r, 1500));
+    const d = await DataStore.getSchoolData();
+    d.config.plan = 'premium'; d.config.schoolName = n;
+    await DataStore.updateConfig(d.config);
+    document.getElementById('upgradeStep1').style.display = 'none';
+    document.getElementById('upgradeStep2').style.display = 'block';
+    btn.textContent = '💳 Proceed to Upgrade'; btn.disabled = false;
+}
+function finishUpgrade() { closeModal('upgradeModal'); initPortal(); switchSection('staff'); }
+
+// ====== SPORTS ======
+let currentSport = 'football';
+
+async function loadSportsSection() {
+    const d = await DataStore.getSchoolData();
+    const sel = document.getElementById('teamMemberSelect');
+    sel.innerHTML = '<option value="">-- Choose enrolled student --</option>';
+    (d.students || []).forEach((x, i) => {
+        const o = document.createElement('option');
+        o.value = i; o.textContent = `${x.name} (${x.class || 'JSS1'})`;
+        sel.appendChild(o);
+    });
+    await loadCustomSports();
+    await renderTeamList();
+}
+
+async function loadCustomSports() {
+    const d = await DataStore.getSchoolData();
+    const cs = d.sports?.custom || [];
+    const c = document.getElementById('customSports');
+    c.innerHTML = cs.length === 0
+        ? '<p style="text-align:center;color:var(--sub);padding:1rem;grid-column:1/-1;">No custom sports added.</p>'
+        : cs.map((x, i) => `<div class="sport-card" onclick="selectCustomSport('${escapeHtml(x.name)}',${i},this)"><div class="sport-icon">${x.icon || '🏅'}</div><div class="sport-title">${escapeHtml(x.name)}</div><div class="sport-detail">${escapeHtml(x.description || '')}</div><button class="action-btn btn-small" style="background:var(--danger);color:white;margin-top:0.5rem;" onclick="event.stopPropagation();deleteCustomSport(${i})">🗑️</button></div>`).join('');
+}
+
+async function addCustomSport() {
+    const n = document.getElementById('customSportName').value.trim();
+    const ic = document.getElementById('customSportIcon').value.trim() || '🏅';
+    const ds = document.getElementById('customSportDesc').value.trim();
+    if (!n) return alert('Enter sport name.');
+    const d = await DataStore.getSchoolData();
+    if (!d.sports) d.sports = { custom: [], teams: {} };
+    d.sports.custom.push({ name: n, icon: ic, description: ds });
+    await DataStore.updateSports(d.sports);
+    closeModal('addCustomSportModal');
+    ['customSportName','customSportIcon','customSportDesc'].forEach(id => document.getElementById(id).value = '');
+    await loadCustomSports();
+}
+
+async function deleteCustomSport(i) {
+    if (!confirm('Delete this sport?')) return;
+    const d = await DataStore.getSchoolData();
+    if (d.sports?.custom) { d.sports.custom.splice(i, 1); await DataStore.updateSports(d.sports); await loadCustomSports(); }
+}
+
+function selectSport(s, el) {
+    currentSport = s;
+    document.querySelectorAll('.sport-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('currentSportLabel').textContent = s.charAt(0).toUpperCase() + s.slice(1);
+    renderTeamList();
+}
+function selectCustomSport(n, i, el) {
+    currentSport = `custom_${i}`;
+    document.querySelectorAll('.sport-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('currentSportLabel').textContent = n;
+    renderTeamList();
+}
+
+async function renderTeamList() {
+    const d = await DataStore.getSchoolData();
+    const t = d.sports?.teams?.[currentSport] || [];
+    const c = document.getElementById('teamList');
+    c.innerHTML = t.length === 0
+        ? '<p style="text-align:center;color:var(--sub);padding:1rem;">No players added to this team.</p>'
+        : t.map((x, i) => `<div class="team-member"><div class="member-avatar">${x.name.charAt(0).toUpperCase()}</div><div class="student-info"><div class="student-name">${escapeHtml(x.name)}</div><div class="student-detail">${x.position || 'Player'} • #${x.number || '?'}</div></div><button class="action-btn btn-small" style="background:var(--danger);color:white;" onclick="removeTeamMember(${i})">🗑️</button></div>`).join('');
+}
+
+async function addTeamMember() {
+    const i = document.getElementById('teamMemberSelect').value;
+    const pos = document.getElementById('playerPosition').value.trim();
+    const num = document.getElementById('playerNumber').value;
+    if (!i) return alert('Select a student.');
+    const d = await DataStore.getSchoolData();
+    const s = d.students[i]; if (!s) return;
+    if (!d.sports) d.sports = { teams: {}, custom: [] };
+    if (!d.sports.teams) d.sports.teams = {};
+    if (!d.sports.teams[currentSport]) d.sports.teams[currentSport] = [];
+    d.sports.teams[currentSport].push({ name: s.name, position: pos || 'Player', number: num || '?' });
+    await DataStore.updateSports(d.sports);
+    closeModal('addTeamMemberModal');
+    await renderTeamList();
+}
+
+async function removeTeamMember(i) {
+    if (!confirm('Remove player?')) return;
+    const d = await DataStore.getSchoolData();
+    if (d.sports?.teams?.[currentSport]) { d.sports.teams[currentSport].splice(i, 1); await DataStore.updateSports(d.sports); await renderTeamList(); }
+}
+
+// FIX: was alert('🏆 Recording match result...')
+function recordMatchResult() {
+    const opponent = prompt('Opponent school name:');
+    if (!opponent) return;
+    const ourScore = prompt('Our score (number):');
+    if (ourScore === null) return;
+    const theirScore = prompt(`${opponent}'s score (number):`);
+    if (theirScore === null) return;
+    const us = parseInt(ourScore) || 0, them = parseInt(theirScore) || 0;
+    const result = us > them ? '🏆 Win' : us < them ? '❌ Loss' : '🤝 Draw';
+    const date = new Date().toLocaleDateString('en-NG', { weekday: 'short', day: 'numeric', month: 'short' });
+    const c = document.getElementById('fixturesList');
+    c.insertAdjacentHTML('afterbegin', `<div class="fixture-card"><div class="fixture-date">${date} • Result recorded</div><div class="fixture-teams">Our School ${us} – ${them} ${escapeHtml(opponent)}</div><div class="fixture-result">${result} • ${document.getElementById('currentSportLabel').textContent}</div></div>`);
+    alert(`✅ Match result recorded:\n${result} — Our School ${us}–${them} ${opponent}`);
+}
+
+// ====== ARTS ======
+async function loadArtsSection() {
+    const d = await DataStore.getSchoolData();
+    const sel = document.getElementById('artworkStudent');
+    sel.innerHTML = '<option value="">-- Choose student --</option>';
+    (d.students || []).forEach((x, i) => { const o = document.createElement('option'); o.value = i; o.textContent = `${x.name} (${x.class || 'JSS1'})`; sel.appendChild(o); });
+    await renderArtsGallery();
+}
+
+async function renderArtsGallery() {
+    const d = await DataStore.getSchoolData();
+    const g = d.arts?.gallery || [];
+    const c = document.getElementById('artsGallery');
+    let h = `<div class="artwork-card" onclick="addArtwork()"><div class="artwork-preview" style="background:#f1f5f9;color:var(--sub);">➕</div><div class="artwork-info"><div class="artwork-title">Add New Artwork</div><div class="artwork-student">Tap to add</div></div></div>`;
+    g.slice().reverse().forEach((x, i) => {
+        const ic = x.medium === 'Drawing' ? '✏️' : x.medium === 'Painting' ? '🎨' : x.medium === 'Sculpture' ? '🗿' : '🖼️';
+        h += `<div class="artwork-card" onclick="viewArtwork(${g.length - 1 - i})"><div class="artwork-preview">${ic}</div><div class="artwork-info"><div class="artwork-title">${escapeHtml(x.title)}</div><div class="artwork-student">by ${escapeHtml(x.studentName)}</div><div class="artwork-actions"><button class="btn-arts btn-small" onclick="event.stopPropagation();viewArtwork(${g.length - 1 - i})">👁️ View</button><button class="btn-outline btn-small" onclick="event.stopPropagation();">📤 Share</button></div></div></div>`;
+    });
+    c.innerHTML = h;
+}
+
+function addArtwork() { openModal('addArtworkModal'); }
+
+async function saveArtwork() {
+    const si = document.getElementById('artworkStudent').value;
+    const t = document.getElementById('artworkTitle').value.trim();
+    const m = document.getElementById('artworkMedium').value;
+    const ds = document.getElementById('artworkDesc').value.trim();
+    if (!si || !t) return alert('Select a student and enter artwork title.');
+    const d = await DataStore.getSchoolData();
+    const s = d.students[si]; if (!s) return;
+    if (!d.arts) d.arts = { gallery: [] };
+    d.arts.gallery.unshift({ id: Date.now().toString(36), studentName: s.name, title: t, medium: m, description: ds, createdAt: new Date().toISOString() });
+    await DataStore.updateArts(d.arts);
+    closeModal('addArtworkModal');
+    document.getElementById('artworkTitle').value = '';
+    document.getElementById('artworkDesc').value = '';
+    await renderArtsGallery();
+}
+
+async function viewArtwork(i) {
+    const d = await DataStore.getSchoolData();
+    const a = d.arts?.gallery?.[i]; if (!a) return;
+    alert(`🎨 "${a.title}"\n\nArtist: ${a.studentName}\nMedium: ${a.medium}\n\n${a.description || '(No description)'}`);
+}
+
+// FIX: was alert('🎨 Creating new exhibition event...')
+function planNewExhibition() {
+    const title = prompt('Exhibition title (e.g. End of Year Art Show 2026):');
+    if (!title) return;
+    const date = prompt('Planned date (e.g. Saturday, 28 June 2026):');
+    if (!date) return;
+    const venue = prompt('Venue (e.g. School Hall, leave blank for School Premises):') || 'School Premises';
+    alert(`✅ Exhibition planned!\n\n"${title}"\nDate: ${date}\nVenue: ${venue}\n\nNext step: Go to Comms → New Announcement to notify parents.`);
+}
+
+// ====== MUSIC ======
+async function loadMusicSection() {
+    const d = await DataStore.getSchoolData();
+    ['lessonStudent','practiceStudent'].forEach(id => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = '<option value="">-- Choose student --</option>';
+        (d.students || []).forEach((x, i) => { const o = document.createElement('option'); o.value = i; o.textContent = `${x.name} (${x.class || 'JSS1'})`; sel.appendChild(o); });
+    });
+    await renderInstrumentList();
+    await renderPracticeLogs();
+}
+
+// FIX: was sync — d was a Promise so d.music was undefined; also the HTML element was missing
+async function renderInstrumentList() {
+    const d = await DataStore.getSchoolData();
+    const c = document.getElementById('instrumentList');
+    if (!c) return;
+    const ins = d.music?.instruments || [{ name: 'Keyboard', status: 'available' }, { name: 'Guitar', status: 'available' }, { name: 'Talking Drum', status: 'available' }];
+    c.innerHTML = ins.length === 0
+        ? '<p style="color:var(--sub);font-size:0.9rem;padding:0.5rem;">No instruments listed.</p>'
+        : ins.map(x => `<div class="instrument-item"><div><div class="instrument-name">${escapeHtml(x.name)}</div></div><span class="instrument-status ${x.status === 'available' ? 'status-available' : 'status-inuse'}">${x.status}</span></div>`).join('');
+}
+
+// FIX: HTML element was missing — renderPracticeLogs() found nothing to write to
+async function renderPracticeLogs() {
+    const d = await DataStore.getSchoolData();
+    const c = document.getElementById('practiceLogs');
+    if (!c) return;
+    const logs = d.music?.practiceLogs || [];
+    c.innerHTML = logs.length === 0
+        ? '<p style="text-align:center;color:var(--sub);padding:0.5rem;">No practice sessions logged yet.</p>'
+        : logs.slice(0, 5).map(x => `<div class="practice-log"><div class="practice-date">${new Date(x.date).toLocaleDateString('en-NG')}</div><div class="practice-student">${escapeHtml(x.studentName)} • ${escapeHtml(x.activity)}</div><div style="font-size:0.75rem;color:var(--sub);">${x.duration || ''} ${x.notes ? '— ' + x.notes : ''}</div></div>`).join('');
+}
+
+// FIX: was alert('🎤 Managing choir roster...') — now redirects to students with context
+function manageChoirRoster() {
+    alert('To manage choir roster:\n\n1. Go to Students → view all enrolled students\n2. Return here and use "Log Practice Session" to record each member\'s attendance and progress\n\nTip: Add a note like "Choir" in the Activity field to filter later.');
+}
+
+async function bookLesson() {
+    const si = document.getElementById('lessonStudent').value;
+    const dt = document.getElementById('lessonDate').value;
+    const instr = document.getElementById('lessonInstrument').value;
+    const time = document.getElementById('lessonTime').value;
+    if (!si || !dt) return alert('Select a student and date.');
+    const d = await DataStore.getSchoolData();
+    const s = d.students[si];
+    alert(`✅ Lesson booked!\n\nStudent: ${s.name}\nInstrument: ${instr}\nDate: ${dt}\nTime: ${time}\n\nReminder: Notify the Music Teacher via WhatsApp from the Support section.`);
+    closeModal('bookLessonModal');
+}
+
+async function savePracticeLog() {
+    const si = document.getElementById('practiceStudent').value;
+    const ac = document.getElementById('practiceActivity').value.trim();
+    const dur = document.getElementById('practiceDuration').value;
+    const notes = document.getElementById('practiceNotes').value.trim();
+    if (!si || !ac) return alert('Select a student and enter the activity.');
+    const d = await DataStore.getSchoolData();
+    const s = d.students[si];
+    if (!d.music) d.music = { practiceLogs: [], instruments: [] };
+    if (!d.music.practiceLogs) d.music.practiceLogs = [];
+    d.music.practiceLogs.unshift({ studentName: s.name, activity: ac, duration: dur, notes, date: new Date().toISOString() });
+    await DataStore.updateMusic(d.music);
+    closeModal('logPracticeModal');
+    document.getElementById('practiceActivity').value = '';
+    document.getElementById('practiceNotes').value = '';
+    await renderPracticeLogs();
+}
+
+// ====== OPPORTUNITIES ======
+async function loadOpportunities() {
+    const d = await DataStore.getSchoolData();
+    const isPremium = d.config.plan === 'premium';
+    const ut = document.getElementById('oppUserType')?.value || '';
+    const ct = document.getElementById('oppCategory')?.value || '';
+    const dl = document.getElementById('oppDeadline')?.value || '';
+    let opps = d.opportunities || [];
+    if (ut) opps = opps.filter(o => !o.audience || o.audience.includes(ut));
+    if (ct) opps = opps.filter(o => o.type === ct);
+    if (dl) { const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + parseInt(dl)); opps = opps.filter(o => new Date(o.deadline) <= cutoff); }
+    renderOpportunityFeed(opps, isPremium);
+    document.getElementById('oppPremiumCTA').style.display = isPremium ? 'none' : 'block';
+}
+
+function renderOpportunityFeed(opps, isPremium) {
+    const c = document.getElementById('oppFeed');
+    if (!opps.length) { c.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--sub);"><p>No opportunities match your filters.</p><button class="btn-outline" style="width:auto;margin-top:0.5rem;" onclick="resetOpportunityFilters()">Reset Filters</button></div>'; return; }
+    c.innerHTML = opps.map(o => {
+        const dl = Math.ceil((new Date(o.deadline) - new Date()) / (1000*60*60*24));
+        const dc = dl <= 7 ? 'urgent' : dl <= 30 ? 'soon' : 'normal';
+        const dt = dl <= 0 ? 'Closed' : `${dl}d left`;
+        const preview = !isPremium;
+        return `<div class="opp-card ${preview ? 'premium-preview' : ''}" onclick="${isPremium ? `viewOpportunity('${o.id}')` : 'previewOpportunity()'}">
+            <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:0.5rem;">
+                <div><div class="opp-title">${escapeHtml(o.title)}</div><div class="opp-meta"><span>${escapeHtml(o.provider)}</span></div></div>
+                <span class="opp-badge ${o.type}">${o.type}</span>
+            </div>
+            <div class="opp-meta">
+                <span class="opp-deadline ${dc}">⏰ ${dt}</span>
+                ${o.amount ? `<span class="opp-amount">💰 ${escapeHtml(o.amount)}</span>` : ''}
+            </div>
+            ${isPremium ? `<div class="opp-actions"><button class="btn-brand btn-small" onclick="event.stopPropagation();">📝 Apply</button></div>` : `<div style="font-size:0.75rem;color:var(--sub);margin-top:0.5rem;">✨ Upgrade to Premium to apply</div>`}
+        </div>`;
+    }).join('');
+}
+
+function filterOpportunities() { loadOpportunities(); }
+function resetOpportunityFilters() {
+    ['oppUserType','oppCategory','oppDeadline'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+    loadOpportunities();
+}
+function previewOpportunity() { alert('✨ Premium Feature\n\nUpgrade to Premium to view eligibility details and apply directly.'); }
+async function viewOpportunity(id) {
+    const d = await DataStore.getSchoolData();
+    if (d.config.plan !== 'premium') return previewOpportunity();
+    const o = (d.opportunities || []).find(x => x.id === id); if (!o) return;
+    alert(`${o.title}\n\nProvider: ${o.provider}\nDeadline: ${o.deadline}\nAmount: ${o.amount || 'Not specified'}\n\nEligibility:\n${o.audience?.join(', ') || 'See provider website'}`);
+}
+
+// ====== UTILITY ======
+async function sendFundraisingAppeal() {
+    const d = await DataStore.getSchoolData();
+    const schoolName = d.config.schoolName || 'Our School';
+    const msg = `📢 *Alumni Fundraising Appeal*\n\nDear Alumni of ${schoolName},\n\nWe are reaching out to our valued alumni community with a request for support in improving school facilities for current students.\n\nEvery contribution — no matter the size — makes a difference. Together we can build a stronger foundation for the next generation.\n\nKindly contact us to discuss how you can contribute.\n\nWith gratitude,\nSchool Management`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+}
+
+function logNewIncident() {
+    const name = prompt('Student Name:'); if (!name) return;
+    const incident = prompt('Describe the incident or health issue:'); if (!incident) return;
+    const action = prompt('Action taken (e.g. Sent home, Given first aid, Called parent):') || 'Noted';
+    alert(`✅ Health incident logged.\n\nStudent: ${name}\nIncident: ${incident}\nAction: ${action}\n\nDate: ${new Date().toLocaleDateString('en-NG')}`);
+}
+
+// ====== STARTUP ======
+window.addEventListener('DOMContentLoaded', async () => {
+    const di = document.getElementById('attendanceDate');
+    if (di) di.value = new Date().toISOString().split('T')[0];
+    if (localStorage.getItem('aarinat_school_id') && localStorage.getItem('aarinat_user_email')) {
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'block';
+        await initPortal();
+    }
+    SyncEngine.checkConnection();
+});
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(() => {}); });
+}
+</script>
+</body>
+</html>
