@@ -181,7 +181,23 @@ async function confirmApproval(){
   SQ.push({t:'addSchoolRecord',d:{schoolId,schoolName:deal.school?.name,principalPhone:deal.school?.phone,principalEmail:deal.school?.email||'',password,tier:deal.tier?.name,tierPrice:deal.tier?.price,agentName:deal.agent?.name,agentPhone:deal.agent?.phone,approvedAt:new Date(),termsPaid:deal.terms||1}});
   // 3. Create actual school account — DIRECT write so portal login works immediately
   const schoolDoc = {
-    config:{plan:'basic',fee:50000,schoolName:deal.school?.name||'',principalEmail:deal.school?.email||'',whatsapp:deal.school?.phone||'',createdAt:new Date().toISOString(),trialStart:new Date().toISOString()},
+    config:{
+      plan:'basic',fee:50000,
+      schoolName:deal.school?.name||'',
+      principalEmail:deal.school?.email||'',
+      whatsapp:deal.school?.phone||'',
+      studentCount:deal.school?.studentCount||0,
+      tier:deal.tier?.name||'',
+      tierPrice:deal.tier?.price||0,
+      createdAt:new Date().toISOString(),
+      trialStart:new Date().toISOString(),
+      // Agent contact — surfaces in school portal Support tab
+      agent:{
+        name:deal.agent?.name||'',
+        phone:deal.agent?.phone||'',
+        agentId:deal.agent?.id||''
+      }
+    },
     staff:[{name:'Principal',email:deal.school?.email||(schoolId.toLowerCase()+'@bloom.edu.ng'),password,role:'Principal',phone:deal.school?.phone||''}],
     students:[],expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
     music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]
