@@ -22,8 +22,17 @@ const SQ={
     if(!db||!navigator.onLine||!this.q.length)return;
     const items=[...this.q];
     for(const item of items){
-      try{await this.exec(item.op);this.q=this.q.filter(x=>x.id!==item.id);}
-      catch(e){item.tries++;if(item.tries>3)this.q=this.q.filter(x=>x.id!==item.id);}
+      try{
+        await this.exec(item.op);
+        this.q=this.q.filter(x=>x.id!==item.id);
+      } catch(e){
+        console.error('SQ exec failed:',item.op?.t, e?.message||e);
+        item.tries=(item.tries||0)+1;
+        if(item.tries>3){
+          console.warn('Dropping op after 3 retries:',item.op?.t);
+          this.q=this.q.filter(x=>x.id!==item.id);
+        }
+      }
     }
     this.save();this.ping();
   },
@@ -42,8 +51,10 @@ const SQ={
     else if(t==='updateLedger')    await db.collection('admin_ledger').doc(op.id).update(op.d);
   }
 };
-window.addEventListener('online',()=>SQ.ping());
+window.addEventListener('online',()=>{SQ.ping();SQ.run();});
 window.addEventListener('offline',()=>SQ.ping());
+// Manual force-flush for debugging
+window._flushSQ = ()=>SQ.run();;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $=id=>document.getElementById(id);
