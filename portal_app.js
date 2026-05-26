@@ -44,6 +44,7 @@ const SQ={
     else if(t==='addLedger')       await db.collection('admin_ledger').add(op.d);
     else if(t==='updateCAC')       await db.collection('admin_cac').doc('progress').set(op.d,{merge:true});
     else if(t==='addAgent')        await db.collection('admin_agents').add(op.d);
+    else if(t==='deleteAgent')     await db.collection('admin_agents').doc(op.id).delete();
     else if(t==='logActivity')     await db.collection('admin_activity').add(op.d);
     else if(t==='saveSettings')    await db.collection('admin_settings').doc('main').set(op.d,{merge:true});
     else if(t==='addOpp')          await db.collection('admin_opportunities').add(op.d);
@@ -537,25 +538,36 @@ async function saveAgent(){
   const phone=normalizePhone($('ag-phone').value);
   const rate=parseFloat($('ag-rate').value)||20;
   if(!name||!phone||phone.length<10)return alert('Name and valid phone required (e.g. 08012345678 or 2348012345678).');
-  if(!db||!navigator.onLine)return alert('You must be online to add an agent.');
 
   const btn=$('add-agent-btn');
   if(btn){btn.textContent='Saving...';btn.disabled=true;}
 
+  const agentData={name,phone,commission:rate,joinedAt:new Date()};
+  // Give it a temp id so it shows immediately in the list
+  const tempId='pending_'+Date.now();
+
   try{
-    const agentData={name,phone,commission:rate,joinedAt:new Date()};
-    // Write directly to Firestore with 8s timeout
-    const writePromise=db.collection('admin_agents').add(agentData);
-    const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out. Check your connection.')),8000));
-    await Promise.race([writePromise,timeoutPromise]);
+    if(db&&navigator.onLine){
+      // Online: write directly to Firestore with 8s timeout
+      const writePromise=db.collection('admin_agents').add(agentData);
+      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
+      const docRef=await Promise.race([writePromise,timeoutPromise]);
+      // Add to memory cache with real Firestore id
+      _agentsCache=[..._agentsCache.filter(a=>!a.id.startsWith('pending_')),{id:docRef.id,...agentData}];
+    } else {
+      // Offline: queue it and add to memory cache with temp id
+      SQ.push({t:'addAgent',d:agentData});
+      _agentsCache=[..._agentsCache,{id:tempId,...agentData}];
+    }
     closeM('add-agent-modal');
     $('ag-name').value='';$('ag-phone').value='';$('ag-rate').value='20';
     log(`👤 Added agent: ${name} (${phone})`);
-    // Refresh from Firestore — this is now the single source of truth
-    await renderAgents();
+    // Show updated list immediately from memory, then refresh from Firestore
+    renderAgentsFromData(_agentsCache,[],[]);
+    renderAgents();
     renderDashboard();
   }catch(e){
-    alert('Failed to save agent: '+(e.message||'Unknown error'));
+    alert('Failed to save: '+(e.message||'Unknown error. Try again.'));
     console.error('saveAgent:', e);
   }finally{
     if(btn){btn.textContent='💾 Add Agent';btn.disabled=false;}
@@ -569,11 +581,11 @@ async function deleteAgent(id, name){
     if(db&&navigator.onLine){
       await db.collection('admin_agents').doc(id).delete();
     } else {
-      // queue not supported for delete — warn
-      alert('You must be online to delete an agent.');return;
+      // Queue delete for when back online
+      SQ.push({t:'deleteAgent',id});
     }
-    const updated=_agentsCache.filter(a=>a.id!==id);
-    saveAgentsCache(updated);
+    // Remove from memory cache immediately regardless
+    _agentsCache=_agentsCache.filter(a=>a.id!==id);
     renderAgentsFromData(_agentsCache,[],[]);
     renderAgents();
     renderDashboard();
