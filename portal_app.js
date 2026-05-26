@@ -464,12 +464,15 @@ async function copyC(schoolId){
 }
 
 // ── Agents ─────────────────────────────────────────────────────────────────
-// Local cache so the list renders instantly without waiting for Firestore
-let _agentsCache = JSON.parse(localStorage.getItem('ad_agents_cache')||'[]');
+// Always use Firestore as source of truth — NO localStorage cache for agents
+// This prevents ghost agents from test data reappearing
+let _agentsCache = [];
+
+// Clear any stale cache from localStorage on load
+localStorage.removeItem('ad_agents_cache');
 
 function saveAgentsCache(agents){
-  _agentsCache = agents;
-  localStorage.setItem('ad_agents_cache', JSON.stringify(agents));
+  _agentsCache = agents; // memory only — never write to localStorage
 }
 
 function renderAgentsFromData(agents, ledger, deals){
@@ -503,10 +506,11 @@ function renderAgentsFromData(agents, ledger, deals){
 }
 
 async function renderAgents(){
-  // Render cached data immediately so UI is never blank
-  if(_agentsCache.length) renderAgentsFromData(_agentsCache, [], []);
+  // Show loading state
+  const c=$('agents-list');
+  if(c && _agentsCache.length===0) c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">Loading agents...</p>';
 
-  // Then fetch fresh data from Firestore in background
+  // Always fetch fresh from Firestore — never trust localStorage
   let agents=[],ledger=[],deals=[];
   try{
     agents=(await db.collection('admin_agents').get()).docs.map(d=>({id:d.id,...d.data()}));
@@ -514,7 +518,10 @@ async function renderAgents(){
     deals=(await db.collection('admin_deals').get()).docs.map(d=>d.data());
     saveAgentsCache(agents);
     renderAgentsFromData(agents, ledger, deals);
-  }catch(e){ console.warn('renderAgents Firestore failed, showing cache'); }
+  }catch(e){
+    console.warn('renderAgents Firestore failed:', e);
+    if(c) c.innerHTML='<p style="text-align:center;color:#dc2626;padding:2rem;">⚠️ Could not load agents. Check connection.</p>';
+  }
 }
 
 function normalizePhone(raw){
@@ -530,49 +537,29 @@ async function saveAgent(){
   const phone=normalizePhone($('ag-phone').value);
   const rate=parseFloat($('ag-rate').value)||20;
   if(!name||!phone||phone.length<10)return alert('Name and valid phone required (e.g. 08012345678 or 2348012345678).');
+  if(!db||!navigator.onLine)return alert('You must be online to add an agent.');
 
   const btn=$('add-agent-btn');
   if(btn){btn.textContent='Saving...';btn.disabled=true;}
 
-  const agentData={name,phone,commission:rate,joinedAt:new Date()};
-
-  // Safety timeout — always reset UI after 8 seconds no matter what
-  const safetyTimer=setTimeout(()=>{
+  try{
+    const agentData={name,phone,commission:rate,joinedAt:new Date()};
+    // Write directly to Firestore with 8s timeout
+    const writePromise=db.collection('admin_agents').add(agentData);
+    const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('Request timed out. Check your connection.')),8000));
+    await Promise.race([writePromise,timeoutPromise]);
     closeM('add-agent-modal');
     $('ag-name').value='';$('ag-phone').value='';$('ag-rate').value='20';
+    log(`👤 Added agent: ${name} (${phone})`);
+    // Refresh from Firestore — this is now the single source of truth
+    await renderAgents();
+    renderDashboard();
+  }catch(e){
+    alert('Failed to save agent: '+(e.message||'Unknown error'));
+    console.error('saveAgent:', e);
+  }finally{
     if(btn){btn.textContent='💾 Add Agent';btn.disabled=false;}
-  }, 8000);
-
-  try {
-    let saved=false;
-    if(db&&navigator.onLine){
-      try{
-        // 5 second timeout on Firestore write
-        const writePromise=db.collection('admin_agents').add(agentData);
-        const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),5000));
-        const docRef=await Promise.race([writePromise,timeoutPromise]);
-        const updatedCache=[..._agentsCache,{id:docRef.id,...agentData}];
-        saveAgentsCache(updatedCache);
-        saved=true;
-      }catch(e){ console.warn('Direct write failed, falling back to queue:', e.message); }
-    }
-
-    if(!saved){
-      SQ.push({t:'addAgent',d:agentData});
-      const updatedCache=[..._agentsCache,{id:'pending_'+Date.now(),...agentData}];
-      saveAgentsCache(updatedCache);
-    }
-  } catch(e){ console.error('saveAgent error:', e); }
-
-  clearTimeout(safetyTimer);
-  closeM('add-agent-modal');
-  $('ag-name').value='';$('ag-phone').value='';$('ag-rate').value='20';
-  if(btn){btn.textContent='💾 Add Agent';btn.disabled=false;}
-
-  renderAgentsFromData(_agentsCache,[],[]);
-  renderAgents();
-  renderDashboard();
-  log(`👤 Added agent: ${name} (${phone})`);
+  }
 }
 
 // ── Agent Edit / Delete ────────────────────────────────────────────────────
