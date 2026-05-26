@@ -398,6 +398,8 @@ async function renderApproved(){
       <div class="dact" style="flex-wrap:wrap;gap:5px;">
         <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>
         <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>
+        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>
+        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>
         ${isPrem
           ? `<button onclick="setPlan('${s.schoolId}','basic')" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
           : `<button onclick="setPlan('${s.schoolId}','premium')" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;">⭐ Activate Premium</button>`
@@ -481,6 +483,10 @@ function renderAgentsFromData(agents, ledger, deals){
         <div class="dn">${esc(a.name)}</div>
         <div class="dm">📱 ${a.phone} · Commission rate: ${a.commission||20}%</div>
         <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>
+        <div class="dact" style="margin-top:6px;gap:5px;">
+          <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>
+          <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>
+        </div>
       </div>`;
     }).join('');
   $('agent-perf-body').innerHTML=agents.map(a=>{
@@ -567,6 +573,120 @@ async function saveAgent(){
   renderAgents();
   renderDashboard();
   log(`👤 Added agent: ${name} (${phone})`);
+}
+
+// ── Agent Edit / Delete ────────────────────────────────────────────────────
+async function deleteAgent(id, name){
+  if(!confirm(`Remove agent "${name}"? This cannot be undone.`))return;
+  try{
+    if(db&&navigator.onLine){
+      await db.collection('admin_agents').doc(id).delete();
+    } else {
+      // queue not supported for delete — warn
+      alert('You must be online to delete an agent.');return;
+    }
+    const updated=_agentsCache.filter(a=>a.id!==id);
+    saveAgentsCache(updated);
+    renderAgentsFromData(_agentsCache,[],[]);
+    renderAgents();
+    renderDashboard();
+    log(`🗑️ Removed agent: ${name}`);
+  }catch(e){alert('Error: '+e.message);}
+}
+
+function openEditAgent(id){
+  const a=_agentsCache.find(x=>x.id===id);
+  if(!a)return;
+  $('edit-ag-id').value=id;
+  $('edit-ag-name').value=a.name||'';
+  $('edit-ag-phone').value=a.phone||'';
+  $('edit-ag-rate').value=a.commission||20;
+  $('edit-agent-modal').classList.add('on');
+}
+
+async function saveEditAgent(){
+  const id=$('edit-ag-id').value;
+  const name=$('edit-ag-name').value.trim();
+  const phone=normalizePhone($('edit-ag-phone').value);
+  const rate=parseFloat($('edit-ag-rate').value)||20;
+  if(!name||!phone||phone.length<10)return alert('Name and valid phone required.');
+  const btn=$('edit-ag-btn');
+  if(btn){btn.textContent='Saving...';btn.disabled=true;}
+  const safetyTimer=setTimeout(()=>{
+    closeM('edit-agent-modal');
+    if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;}
+  },8000);
+  try{
+    const data={name,phone,commission:rate};
+    if(db&&navigator.onLine){
+      await db.collection('admin_agents').doc(id).update(data);
+    }
+    const updated=_agentsCache.map(a=>a.id===id?{...a,...data}:a);
+    saveAgentsCache(updated);
+  }catch(e){console.warn('Edit agent error:',e);}
+  clearTimeout(safetyTimer);
+  closeM('edit-agent-modal');
+  if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;}
+  renderAgentsFromData(_agentsCache,[],[]);
+  renderAgents();
+  log(`✏️ Updated agent: ${name}`);
+}
+
+// ── School Edit / Delete ────────────────────────────────────────────────────
+async function deleteSchool(docId, schoolId, schoolName){
+  if(!confirm(`Remove school "${schoolName}" (${schoolId})? This will also delete the school login. This cannot be undone.`))return;
+  try{
+    if(!(db&&navigator.onLine)){alert('Must be online to delete.');return;}
+    // Delete from admin_approved_schools
+    await db.collection('admin_approved_schools').doc(docId).delete();
+    // Delete the school login doc
+    await db.collection('schools').doc(schoolId).delete().catch(()=>{});
+    log(`🗑️ Removed school: ${schoolName} (${schoolId})`);
+    renderApproved();
+    renderDashboard();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+function openEditSchool(docId, schoolId){
+  // We'll fetch the record from Firestore
+  if(!(db&&navigator.onLine)){alert('Must be online to edit.');return;}
+  db.collection('admin_approved_schools').doc(docId).get().then(doc=>{
+    if(!doc.exists)return alert('Not found.');
+    const s=doc.data();
+    $('edit-sc-docid').value=docId;
+    $('edit-sc-schoolid').value=schoolId;
+    $('edit-sc-name').value=s.schoolName||'';
+    $('edit-sc-phone').value=s.principalPhone||'';
+    $('edit-sc-email').value=s.principalEmail||'';
+    $('edit-sc-pwd').value=s.password||'';
+    $('edit-sc-agent').value=s.agentName||'';
+    $('edit-school-modal').classList.add('on');
+  }).catch(e=>alert('Error: '+e.message));
+}
+
+async function saveEditSchool(){
+  const docId=$('edit-sc-docid').value;
+  const schoolId=$('edit-sc-schoolid').value;
+  const schoolName=$('edit-sc-name').value.trim();
+  const principalPhone=$('edit-sc-phone').value.trim();
+  const principalEmail=$('edit-sc-email').value.trim();
+  const password=$('edit-sc-pwd').value.trim();
+  const agentName=$('edit-sc-agent').value.trim();
+  if(!schoolName||!principalPhone)return alert('School name and phone are required.');
+  const btn=$('edit-sc-btn');
+  if(btn){btn.textContent='Saving...';btn.disabled=true;}
+  try{
+    const data={schoolName,principalPhone,principalEmail,password,agentName,updatedAt:new Date()};
+    await db.collection('admin_approved_schools').doc(docId).update(data);
+    // Also update school config if password changed
+    if(password){
+      await db.collection('schools').doc(schoolId).update({'config.password':password}).catch(()=>{});
+    }
+    log(`✏️ Updated school: ${schoolName}`);
+    closeM('edit-school-modal');
+    renderApproved();
+  }catch(e){alert('Error: '+e.message);}
+  if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;}
 }
 
 // ── Ledger ─────────────────────────────────────────────────────────────────
