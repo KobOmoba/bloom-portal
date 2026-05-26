@@ -332,22 +332,111 @@ async function addCAC(){
 // ── Approved ───────────────────────────────────────────────────────────────
 async function renderApproved(){
   let schools=[];
-  try{schools=(await db.collection('admin_approved_schools').get()).docs.map(d=>({_id:d.id,...d.data()}));}catch(e){}
+  let liveData={};
+  try{
+    schools=(await db.collection('admin_approved_schools').get()).docs.map(d=>({_id:d.id,...d.data()}));
+    // Fetch live data (studentCount, tierExceeded) from schools collection
+    const snaps = await Promise.allSettled(
+      schools.map(s=>db.collection('schools').doc(s.schoolId).get())
+    );
+    snaps.forEach((r,i)=>{
+      if(r.status==='fulfilled'&&r.value.exists){
+        const cfg=r.value.data().config||{};
+        liveData[schools[i].schoolId]={
+          studentCount: cfg.studentCount||0,
+          tierExceededAt: cfg.tierExceededAt||null,
+          tierExceededNewTier: cfg.tierExceededNewTier||null,
+          plan: cfg.plan||'basic',
+          tierMax: cfg.tierMax||0
+        };
+      }
+    });
+  }catch(e){ console.error('renderApproved:',e); }
   const q=($('search-approved')?.value||'').toLowerCase();
   if(q)schools=schools.filter(s=>(s.schoolName||'').toLowerCase().includes(q)||(s.schoolId||'').toLowerCase().includes(q));
   const c=$('approved-list');
   if(!schools.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">No approved schools.</p>';return;}
-  c.innerHTML=schools.map(s=>`<div class="deal appr">
-    <span class="chip ca">ACTIVE</span>
-    <div class="dn">${esc(s.schoolName)}</div>
-    <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>
-    <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>
-    <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>
-    <div class="dact">
-      <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>
-      <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>
-    </div>
-  </div>`).join('');
+
+  const TIERS=[
+    {max:50,  price:10000, name:'Starter (1–50)'},
+    {max:100, price:20000, name:'Small (51–100)'},
+    {max:200, price:35000, name:'Medium (101–200)'},
+    {max:350, price:55000, name:'Large (201–350)'},
+    {max:9999,price:75000, name:'Enterprise (351+)'}
+  ];
+  function getTierByMax(max){ return TIERS.find(t=>t.max>=max)||TIERS[TIERS.length-1]; }
+
+  c.innerHTML=schools.map(s=>{
+    const live=liveData[s.schoolId]||{};
+    const count=live.studentCount||0;
+    const isPrem=live.plan==='premium';
+    const tierExceeded=!!live.tierExceededAt;
+    const tierMax=live.tierMax||TIERS.find(t=>(s.tierPrice||0)<=t.price)?.max||50;
+    const newTier=live.tierExceededNewTier||{};
+
+    const statusChip = tierExceeded
+      ? `<span class="chip" style="background:#dc2626;color:#fff;">⚠️ OVER TIER</span>`
+      : `<span class="chip ca">ACTIVE</span>`;
+    const planChip = isPrem
+      ? `<span class="chip" style="background:#7c3aed;color:#fff;margin-left:4px;">⭐ PREMIUM</span>`
+      : '';
+    const overAlert = tierExceeded
+      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.4rem 0.6rem;font-size:0.74rem;color:#dc2626;margin-top:4px;">
+           ⚠️ ${count} students exceeds tier limit (${tierMax}). Needs upgrade to <b>${newTier.name||'?'}</b> — ₦${fmt(newTier.price||0)}/term
+         </div>` : '';
+
+    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">
+        ${statusChip}${planChip}
+        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}
+      </div>
+      <div class="dn">${esc(s.schoolName)}</div>
+      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>
+      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>
+      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>
+      ${overAlert}
+      <div class="dact" style="flex-wrap:wrap;gap:5px;">
+        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>
+        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>
+        ${isPrem
+          ? `<button onclick="setPlan('${s.schoolId}','basic')" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
+          : `<button onclick="setPlan('${s.schoolId}','premium')" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;">⭐ Activate Premium</button>`
+        }
+        ${tierExceeded
+          ? `<button onclick="unlockSchool('${s.schoolId}')" style="background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:#16a34a;font-weight:700;">🔓 Unlock (paid)</button>`
+          : ''
+        }
+      </div>
+    </div>`;
+  }).join('');
+}
+
+
+async function setPlan(schoolId, plan){
+  if(!confirm(`Set ${schoolId} to ${plan.toUpperCase()} plan?`)) return;
+  try{
+    await db.collection('schools').doc(schoolId).update({'config.plan': plan});
+    // Also update admin_approved_schools record
+    const snap = await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
+    if(!snap.empty) await snap.docs[0].ref.update({plan});
+    await log(`⭐ ${schoolId} set to ${plan.toUpperCase()}`);
+    renderApproved();
+  } catch(e){ alert('Error: '+e.message); }
+}
+
+async function unlockSchool(schoolId){
+  if(!confirm(`Confirm payment received and unlock ${schoolId}?`)) return;
+  try{
+    await db.collection('schools').doc(schoolId).update({
+      'config.tierExceededAt': null,
+      'config.tierExceededNewTier': null
+    });
+    // Mark admin_alerts resolved
+    const alerts = await db.collection('admin_alerts').where('schoolId','==',schoolId).where('resolved','==',false).get();
+    alerts.docs.forEach(d=>d.ref.update({resolved:true, resolvedAt: new Date()}));
+    await log(`🔓 Unlocked ${schoolId} after tier upgrade payment`);
+    renderApproved();
+  } catch(e){ alert('Error: '+e.message); }
 }
 
 async function resend(schoolId){
@@ -604,3 +693,14 @@ document.addEventListener('DOMContentLoaded',()=>{
     initAdmin();
   }
 });
+
+
+async function loadAlerts(){
+  try{
+    const snap = await db.collection('admin_alerts').where('resolved','==',false).get();
+    const count = snap.size;
+    const badge = document.getElementById('alert-badge');
+    if(badge){ badge.textContent=count>0?count:''; badge.style.display=count>0?'inline-flex':'none'; }
+    if(count>0) console.warn(`⚠️ ${count} unresolved tier alerts`);
+  } catch(e){}
+}
