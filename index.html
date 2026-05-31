@@ -175,6 +175,13 @@
         <textarea id="s-tpl" rows="8" placeholder="Use {{schoolId}} and {{password}} as placeholders"></textarea>
         <button class="btn-b" onclick="saveSettings()">💾 Save Settings</button>
       </div>
+      <div class="card" style="border:1.5px solid rgba(220,38,38,0.4);">
+        <div class="ct" style="color:#f87171;">🧹 Production Reset</div>
+        <p style="font-size:0.82rem;color:var(--sub);margin-bottom:0.4rem;">Use this <strong style="color:var(--text);">once</strong> before going live with real schools. Wipes all test deals, fake approved schools, commission entries, and activity logs.</p>
+        <p style="font-size:0.78rem;color:#fbbf24;margin-bottom:0.75rem;">⚠️ Your settings, agents list, and CAC fund balance are NOT deleted.</p>
+        <button id="prod-reset-btn" class="btn-d" onclick="productionReset()">🧹 Wipe All Test Data — Start Fresh</button>
+      </div>
+
       <div class="card">
         <div class="ct">🗄️ Data Management</div>
         <div class="grid2">
