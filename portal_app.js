@@ -487,8 +487,9 @@ function renderAgentsFromData(agents, ledger, deals){
         <div class="dn">${esc(a.name)}</div>
         <div class="dm">📱 ${a.phone} · Commission rate: ${a.commission||20}%</div>
         <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>
-        <div class="dact" style="margin-top:6px;gap:5px;">
+        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">
           <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>
+          <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>
           <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>
         </div>
       </div>`;
@@ -533,6 +534,9 @@ function normalizePhone(raw){
   return p;
 }
 
+// ── Update this to your actual agent app URL ───────────────────────────────
+const AGENT_APP_URL = 'https://portal.edubloom.com.ng'; // ← update this
+
 async function saveAgent(){
   const name=$('ag-name').value.trim();
   const phone=normalizePhone($('ag-phone').value);
@@ -566,12 +570,54 @@ async function saveAgent(){
     renderAgentsFromData(_agentsCache,[],[]);
     renderAgents();
     renderDashboard();
+
+    // ✅ FIX 3: Send WhatsApp activation message to the new agent
+    const localPhone = phone.startsWith('234') ? '0' + phone.slice(3) : phone;
+    const exampleComm = Math.round(10000 * rate / 100).toLocaleString('en-NG');
+    const activationMsg =
+      `*Hello ${name}!* 🌸\n\n` +
+      `You have been registered as an *Educational Bloom* agent by AariNAT.\n\n` +
+      `*Your login:*\n` +
+      `📱 Phone (login key): *${localPhone}*\n\n` +
+      `*Agent App link:*\n` +
+      `${AGENT_APP_URL}\n\n` +
+      `*How to log in:*\n` +
+      `1. Open the link above\n` +
+      `2. Tap Login\n` +
+      `3. Enter your number: *${localPhone}*\n\n` +
+      `For every school you sign up, you earn commission — e.g. ₦${exampleComm} per Starter school.\n\n` +
+      `Questions? Call Bayo: *+234 816 543 8265*\n\n` +
+      `_Educational Bloom by AariNAT_`;
+
+    if(confirm(`✅ Agent "${name}" added!\n\nSend them a WhatsApp activation message now?\n(They need this to know how to log in.)`)){
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(activationMsg)}`,'_blank');
+    }
   }catch(e){
     alert('Failed to save: '+(e.message||'Unknown error. Try again.'));
     console.error('saveAgent:', e);
   }finally{
     if(btn){btn.textContent='💾 Add Agent';btn.disabled=false;}
   }
+}
+
+// ── Resend activation WhatsApp to an existing agent ───────────────────────
+function resendAgentActivation(agentId){
+  const a = _agentsCache.find(x => x.id === agentId);
+  if(!a){ alert('Agent not found. Refresh the page.'); return; }
+  const phone = normalizePhone(a.phone || '');
+  const localPhone = phone.startsWith('234') ? '0' + phone.slice(3) : phone;
+  const exampleComm = Math.round(10000 * (a.commission||20) / 100).toLocaleString('en-NG');
+  const msg =
+    `*Hello ${a.name}!* 🌸\n\n` +
+    `Reminder of your *Educational Bloom* agent login:\n\n` +
+    `📱 Your login key (phone): *${localPhone}*\n\n` +
+    `*Agent App:*\n` +
+    `${AGENT_APP_URL}\n\n` +
+    `Open the link → tap Login → enter *${localPhone}*\n\n` +
+    `Commission: ₦${exampleComm} per Starter school, more for bigger schools.\n\n` +
+    `Questions? Call Bayo: *+234 816 543 8265*\n\n` +
+    `_Educational Bloom by AariNAT_`;
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
 // ── Agent Edit / Delete ────────────────────────────────────────────────────
