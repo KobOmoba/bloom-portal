@@ -39,9 +39,9 @@ const SQ={
   async exec(op){
     const t=op.t;
     if(t==='updateDeal')     await db.collection('admin_deals').doc(op.id).update(op.d);
-    else if(t==='addSchoolRecord') await db.collection('admin_approved_schools').add(op.d);
+    else if(t==='addSchoolRecord') await db.collection('admin_approved_schools').doc(op.id).set(op.d,{merge:true});
     else if(t==='createSchool')    await db.collection('schools').doc(op.id).set(op.d,{merge:true});
-    else if(t==='addLedger')       await db.collection('admin_ledger').add(op.d);
+    else if(t==='addLedger')       await db.collection('admin_ledger').doc(op.id).set(op.d,{merge:true});
     else if(t==='updateCAC')       await db.collection('admin_cac').doc('progress').set(op.d,{merge:true});
     else if(t==='addAgent')        await db.collection('admin_agents').add(op.d);
     else if(t==='deleteAgent')     await db.collection('admin_agents').doc(op.id).delete();
@@ -190,7 +190,7 @@ async function confirmApproval(){
   // 1. Mark deal approved
   SQ.push({t:'updateDeal',id,d:{status:'approved',schoolId,approvedAt:new Date()}});
   // 2. Add to approved schools list
-  SQ.push({t:'addSchoolRecord',d:{schoolId,schoolName:deal.school?.name,principalPhone:deal.school?.phone,principalEmail:deal.school?.email||'',password,tier:deal.tier?.name,tierPrice:deal.tier?.price,agentName:deal.agent?.name,agentPhone:deal.agent?.phone,approvedAt:new Date(),termsPaid:deal.terms||1}});
+  SQ.push({t:'addSchoolRecord',id:schoolId,d:{schoolId,schoolName:deal.school?.name,principalPhone:deal.school?.phone,principalEmail:deal.school?.email||'',password,tier:deal.tier?.name,tierPrice:deal.tier?.price,agentName:deal.agent?.name,agentPhone:deal.agent?.phone,approvedAt:new Date(),termsPaid:deal.terms||1}});
   // 3. Create actual school account — DIRECT write so portal login works immediately
   const schoolDoc = {
     config:{
@@ -222,7 +222,7 @@ async function confirmApproval(){
     SQ.push({t:'createSchool',id:schoolId,d:schoolDoc});
   }
   // 4. Commission ledger entry
-  SQ.push({t:'addLedger',d:{dealId:id,schoolId,agent:deal.agent?.name,agentPhone:deal.agent?.phone,amount:commission,paid:false,date:new Date()}});
+  SQ.push({t:'addLedger',id:id+'_comm',d:{dealId:id,schoolId,agent:deal.agent?.name,agentPhone:deal.agent?.phone,amount:commission,paid:false,date:new Date()}});
   // 5. CAC allocation
   try{
     const sd=await db.collection('admin_settings').doc('main').get();
