@@ -115,7 +115,7 @@ async function initAdmin(){
       await db.collection('admin_agents').add({name:'Grace Okonkwo',phone:'2348098765432',commission:20,joinedAt:new Date()});
     }
     const sd=await db.collection('admin_settings').doc('main').get();
-    if(!sd.exists)await db.collection('admin_settings').doc('main').set({adminPassword:'aarinat2024',defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Educational Bloom!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://kobomoba.github.io/School-Bloom/\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
+    if(!sd.exists)await db.collection('admin_settings').doc('main').set({adminPassword:'aarinat2024',defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Educational Bloom!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
     const cac=await db.collection('admin_cac').doc('progress').get();
     if(!cac.exists)await db.collection('admin_cac').doc('progress').set({raised:0});
     // demo pending deal
@@ -459,7 +459,7 @@ async function copyC(schoolId){
     const snap=await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
     if(snap.empty)return;
     const s=snap.docs[0].data();
-    const txt=`School ID: ${s.schoolId}\nPassword: ${s.password}\nPortal: https://kobomoba.github.io/School-Bloom/`;
+    const txt=`School ID: ${s.schoolId}\nPassword: ${s.password}\nPortal: https://school.edubloom.com.ng`;
     navigator.clipboard.writeText(txt).then(()=>alert('✅ Copied!')).catch(()=>prompt('Copy:',txt));
   }catch(e){}
 }
@@ -839,6 +839,40 @@ async function exportAll(){
     a.download=`aarinat-backup-${new Date().toISOString().split('T')[0]}.json`;a.click();
     log('📥 Full backup exported');
   }catch(e){alert('Export failed. Check connection.');}
+}
+
+
+// ── Production Reset ─────────────────────────────────────────────────────────
+// Wipes all test data. Keeps settings, agents, and CAC balance.
+async function productionReset(){
+  if(!confirm('🧹 PRODUCTION RESET\n\nThis will permanently delete:\n• All deals (pending & approved)\n• All approved school records\n• All commission ledger entries\n• All activity logs\n\nThis KEEPS your settings, agents list, and CAC balance.\n\nType OK to continue — this cannot be undone.')) return;
+  const confirm2 = prompt('Type DELETE to confirm wipe:');
+  if(confirm2 !== 'DELETE'){ alert('Cancelled.'); return; }
+
+  const btn = document.getElementById('prod-reset-btn');
+  if(btn){ btn.textContent='Wiping...'; btn.disabled=true; }
+
+  const collections=['admin_deals','admin_approved_schools','admin_ledger','admin_activity','schools'];
+  let total=0;
+  try{
+    for(const col of collections){
+      let snap = await db.collection(col).limit(400).get();
+      while(!snap.empty){
+        const batch=db.batch();
+        snap.docs.forEach(d=>batch.delete(d.ref));
+        await batch.commit();
+        total+=snap.docs.length;
+        snap=await db.collection(col).limit(400).get();
+      }
+    }
+    alert(`✅ Done! Deleted ${total} test records.\nYour settings, agents, and CAC balance are intact.\nYou are ready for real schools.`);
+    location.reload();
+  }catch(e){
+    alert('Error: '+(e.message||'unknown')+'. Check your internet and try again.');
+    console.error('productionReset:', e);
+  }finally{
+    if(btn){ btn.textContent='🧹 Wipe All Test Data — Start Fresh'; btn.disabled=false; }
+  }
 }
 
 async function clearAll(){
