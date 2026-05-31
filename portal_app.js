@@ -586,7 +586,7 @@ async function saveAgent(){
       `2. Tap Login\n` +
       `3. Enter your number: *${localPhone}*\n\n` +
       `For every school you sign up, you earn commission — e.g. ₦${exampleComm} per Starter school.\n\n` +
-      `Questions? Call Bayo: *+234 816 543 8265*\n\n` +
+      `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
       `_Educational Bloom by AariNAT_`;
 
     if(confirm(`✅ Agent "${name}" added!\n\nSend them a WhatsApp activation message now?\n(They need this to know how to log in.)`)){
@@ -615,7 +615,7 @@ function resendAgentActivation(agentId){
     `${AGENT_APP_URL}\n\n` +
     `Open the link → tap Login → enter *${localPhone}*\n\n` +
     `Commission: ₦${exampleComm} per Starter school, more for bigger schools.\n\n` +
-    `Questions? Call Bayo: *+234 816 543 8265*\n\n` +
+    `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
     `_Educational Bloom by AariNAT_`;
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
