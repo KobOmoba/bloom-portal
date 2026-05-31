@@ -1,885 +1,613 @@
 // ── Firebase ───────────────────────────────────────────────────────────────
-const FB={apiKey:"AIzaSyCVEdunn3AZndDP5Rm1Z3Kv1e6G6W2mB_o",authDomain:"educationbloom-699ed.firebaseapp.com",projectId:"educationbloom-699ed",storageBucket:"educationbloom-699ed.firebasestorage.app",messagingSenderId:"33750392965",appId:"1:33750392965:web:2b3da887ede996ea8389ec"};
-let db=null;
-try{firebase.initializeApp(FB);db=firebase.firestore();}catch(e){console.warn('FB:',e);}
+const FB = { apiKey:"AIzaSyCVEdunn3AZndDP5Rm1Z3Kv1e6G6W2mB_o", authDomain:"educationbloom-699ed.firebaseapp.com", projectId:"educationbloom-699ed", storageBucket:"educationbloom-699ed.firebasestorage.app", messagingSenderId:"33750392965", appId:"1:33750392965:web:2b3da887ede996ea8389ec" };
+let db = null;
+try {
+  firebase.initializeApp(FB);
+  db = firebase.firestore();
+  // ✅ FIX: Enable offline persistence — Firestore caches all data locally.
+  // After an agent logs in once, the app works fully without internet.
+  db.enablePersistence({ synchronizeTabs: true })
+    .then(() => console.log('✅ Offline persistence enabled'))
+    .catch(err => {
+      // failed-precondition = multiple tabs open (one tab still works offline)
+      // unimplemented = very old browser — ignored gracefully
+      if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+        console.warn('Persistence error:', err.code);
+      }
+    });
+} catch(e){ console.warn('Firebase:',e); }
 
 // ── State ──────────────────────────────────────────────────────────────────
-let pendingUnsub=null;
-let agentsUnsub=null;
-let approvalData=null;
-let _agentsCache=[];
-let _agentsLoaded=false; // tracks whether listener has fired at least once
+let agent = null;    // { id, name, phone, commission }
+let selTier = null;
+const TIERS_LIST = [
+  {max:50,  price:10000, name:'Starter (1-50 students)'},
+  {max:100, price:20000, name:'Small (51-100 students)'},
+  {max:200, price:35000, name:'Medium (101-200 students)'},
+  {max:350, price:55000, name:'Large (201-350 students)'},
+  {max:9999,price:75000, name:'Enterprise (351+ students)'}
+];
+  // { price, name, max }
+const TIERS = [
+  { price:10000, name:'Starter (1–50)',    max:50  },
+  { price:20000, name:'Small (51–100)',    max:100 },
+  { price:35000, name:'Medium (101–200)',  max:200 },
+  { price:55000, name:'Large (201–350)',   max:350 },
+  { price:75000, name:'Enterprise (351+)', max:9999 },
+];
 
-// ── Sync Queue ─────────────────────────────────────────────────────────────
-const SQ={
-  q:JSON.parse(localStorage.getItem('ad_sq')||'[]'),
-  save(){localStorage.setItem('ad_sq',JSON.stringify(this.q));},
-  push(op){this.q.push({id:Date.now().toString(36)+Math.random().toString(36).slice(2),op,tries:0});this.save();this.run();},
-  ping(){
-    const ok=navigator.onLine&&!!db;
-    const el=document.getElementById('sync');
-    if(el){el.className='sdot '+(ok?this.q.length?'sdot-sync':'sdot-on':'sdot-off');el.textContent=ok?this.q.length?'● Syncing':'● Online':'● Offline';}
-    if(ok&&this.q.length)this.run();
-  },
+// ── Sync queue ─────────────────────────────────────────────────────────────
+const SQ = {
+  q: JSON.parse(localStorage.getItem('ag_sq')||'[]'),
+  save(){ localStorage.setItem('ag_sq', JSON.stringify(this.q)); },
+  push(op){ this.q.push({ id: Date.now().toString(36)+Math.random().toString(36).slice(2), op, tries:0 }); this.save(); this.run(); },
+  ping(){ const ok=navigator.onLine&&!!db; const el=document.getElementById('sync'); if(el){ el.className='dot '+(ok?this.q.length?'dot-sync':'dot-on':'dot-off'); el.textContent=ok?this.q.length?'● Syncing':'● Online':'● Offline'; } if(ok&&this.q.length) this.run(); },
   async run(){
-    if(!db||!navigator.onLine||!this.q.length)return;
+    if(!db||!navigator.onLine||!this.q.length) return;
     const items=[...this.q];
     for(const item of items){
-      try{
-        await this.exec(item.op);
-        this.q=this.q.filter(x=>x.id!==item.id);
-      }catch(e){
-        console.error('SQ exec failed:',item.op?.t,e?.message||e);
-        item.tries=(item.tries||0)+1;
-        if(item.tries>3){this.q=this.q.filter(x=>x.id!==item.id);}
-      }
+      try{ await this.exec(item.op); this.q=this.q.filter(x=>x.id!==item.id); }
+      catch(e){ item.tries++; if(item.tries>3) this.q=this.q.filter(x=>x.id!==item.id); }
     }
-    this.save();this.ping();
+    this.save(); this.ping();
   },
-  async exec(op){
-    const t=op.t;
-    if(t==='updateDeal')          await db.collection('admin_deals').doc(op.id).update(op.d);
-    else if(t==='deleteDeal')     await db.collection('admin_deals').doc(op.id).delete();
-    else if(t==='addSchoolRecord')await db.collection('admin_approved_schools').add(op.d);
-    else if(t==='createSchool')   await db.collection('schools').doc(op.id).set(op.d,{merge:true});
-    else if(t==='addLedger')      await db.collection('admin_ledger').add(op.d);
-    else if(t==='updateCAC')      await db.collection('admin_cac').doc('progress').set(op.d,{merge:true});
-    else if(t==='addAgent')       await db.collection('admin_agents').add(op.d);
-    else if(t==='deleteAgent')    await db.collection('admin_agents').doc(op.id).delete();
-    else if(t==='logActivity')    await db.collection('admin_activity').add(op.d);
-    else if(t==='saveSettings')   await db.collection('admin_settings').doc('main').set(op.d,{merge:true});
-    else if(t==='addOpp')         await db.collection('admin_opportunities').add(op.d);
-    else if(t==='deleteOpp')      await db.collection('admin_opportunities').doc(op.id).delete();
-    else if(t==='updateLedger')   await db.collection('admin_ledger').doc(op.id).update(op.d);
-  }
+  async exec(op){ if(op.t==='deal') await db.collection('admin_deals').add(op.d); }
 };
-window.addEventListener('online',()=>{SQ.ping();SQ.run();});
-window.addEventListener('offline',()=>SQ.ping());
-window._flushSQ=()=>SQ.run();
+window.addEventListener('online', ()=>{ SQ.ping(); SQ.run(); });
+window.addEventListener('offline', ()=>SQ.ping());
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-const $=id=>document.getElementById(id);
-const esc=s=>{if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
-const fmt=n=>'₦'+Number(n||0).toLocaleString('en-NG');
-const openM=id=>$(id).classList.add('on');
-const closeM=id=>$(id).classList.remove('on');
-window.onclick=e=>{if(e.target.classList.contains('modal'))e.target.classList.remove('on');};
-document.onkeydown=e=>{if(e.key==='Escape')document.querySelectorAll('.modal').forEach(m=>m.classList.remove('on'));};
-function genId(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='BLOOM-';for(let i=0;i<6;i++)s+=c[Math.floor(Math.random()*c.length)];return s;}
-
-async function log(msg){
-  const local=JSON.parse(localStorage.getItem('ad_act')||'[]');
-  local.unshift({message:msg,timestamp:new Date().toISOString()});
-  localStorage.setItem('ad_act',JSON.stringify(local.slice(0,60)));
-  SQ.push({t:'logActivity',d:{message:msg,timestamp:new Date()}});
-  renderActivity();
-}
+const esc = s => { if(!s)return''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; };
+const $ = id => document.getElementById(id);
+const fmt = n => '₦'+Number(n).toLocaleString('en-NG');
 
 // ── Login ──────────────────────────────────────────────────────────────────
-async function doLogin(){
-  const pwd=$('l-pwd').value;
-  const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
-  let stored='aarinat2024';
-  try{const doc=await db.collection('admin_settings').doc('main').get();if(doc.exists&&doc.data().adminPassword)stored=doc.data().adminPassword;}catch(e){}
-  if(pwd!==stored){
-    const err=$('l-err');err.textContent='Incorrect password.';err.style.display='block';
-    btn.textContent='🔓 Enter';btn.disabled=false;return;
-  }
-  localStorage.setItem('ad_auth','1');
-  localStorage.setItem('ad_auth_time',Date.now().toString());
-  $('login-screen').style.display='none';
-  $('main-app').style.display='block';
-  SQ.ping();
-  await initAdmin();
+function setTab(mode){
+  $('phone-form').style.display = mode==='phone' ? 'block' : 'none';
+  $('register-form').style.display = mode==='register' ? 'block' : 'none';
+  document.querySelectorAll('.ltab').forEach((t,i)=>t.classList.toggle('on',(i===0&&mode==='phone')||(i===1&&mode==='register')));
+  $('login-err').style.display='none';
 }
 
-function logout(){
-  if(!confirm('Logout?'))return;
-  localStorage.removeItem('ad_auth');
-  if(pendingUnsub)pendingUnsub();
-  if(agentsUnsub)agentsUnsub();
-  location.reload();
+// Convert any Nigerian phone format to 234XXXXXXXXXX
+function normalizePhone(raw){
+  let p = raw.trim().replace(/\D/g,'');
+  if(p.startsWith('0') && p.length === 11) return '234' + p.slice(1);
+  if(p.startsWith('234') && p.length === 13) return p;
+  if(p.length === 10) return '234' + p;
+  return p;
 }
+
+async function doLogin(){
+  const raw = $('l-phone').value.trim();
+  const phone = normalizePhone(raw);
+  const localFmt = phone.startsWith('234') ? '0' + phone.slice(3) : phone;
+
+  if(phone.length < 10){
+    showErr('Enter your WhatsApp number — e.g. 08038740131 or 2348038740131');
+    return;
+  }
+  const btn=$('l-btn'); btn.textContent='Checking...'; btn.disabled=true;
+  $('login-err').style.display='none';
+
+  // ✅ Step 1: check localStorage cache first — works offline after first login
+  const cached = localStorage.getItem('ag_agent');
+  if(cached){
+    try{
+      const cachedAgent = JSON.parse(cached);
+      const cachedPhone = normalizePhone(cachedAgent.phone || '');
+      if(cachedPhone === phone || cachedAgent.phone === localFmt || cachedPhone === localFmt){
+        agent = cachedAgent;
+        // Silently refresh from Firestore in background if online
+        if(navigator.onLine && db){
+          refreshAgentBackground(cachedAgent.id, phone, localFmt).catch(()=>{});
+        }
+        startApp();
+        btn.textContent='▶ Login'; btn.disabled=false;
+        return;
+      }
+    }catch(e){ localStorage.removeItem('ag_agent'); }
+  }
+
+  // ✅ Step 2: first-time login — needs internet to find agent record in Firestore
+  if(!navigator.onLine || !db){
+    showErr('First login needs internet. Connect once — after that you can work offline anytime.');
+    btn.textContent='▶ Login'; btn.disabled=false;
+    return;
+  }
+
+  try {
+    // Search both formats — admin may have saved with or without country code
+    const [snap1, snap2] = await Promise.all([
+      db.collection('admin_agents').where('phone','==',phone).get(),
+      db.collection('admin_agents').where('phone','==',localFmt).get()
+    ]);
+    // Deduplicate by document ID
+    const seen = new Set();
+    const allDocs = [...snap1.docs, ...snap2.docs].filter(d=>{
+      if(seen.has(d.id)) return false; seen.add(d.id); return true;
+    });
+
+    if(!allDocs.length){
+      showErr('Number not registered. Ask Bayo (AariNAT) to add you: +234 816 543 8265');
+      btn.textContent='▶ Login'; btn.disabled=false; return;
+    }
+    const doc = allDocs[0];
+    agent = { id:doc.id, ...doc.data() };
+    localStorage.setItem('ag_agent', JSON.stringify(agent));
+    startApp();
+  } catch(e){
+    const msg = e?.message||'';
+    if(msg.toLowerCase().includes('permission') || msg.includes('PERMISSION_DENIED')){
+      showErr('Firebase permission error. Ask Bayo to fix the Firestore Rules: +234 816 543 8265');
+    } else if(!navigator.onLine){
+      showErr('No internet. First login needs a connection — offline works after that.');
+    } else {
+      showErr('Failed: ' + (msg.slice(0,100)||'unknown error'));
+    }
+    console.error('Login error:', e);
+  }
+  btn.textContent='▶ Login'; btn.disabled=false;
+}
+
+// Silently refresh cached agent profile from Firestore in background
+async function refreshAgentBackground(agentId, phone, localFmt){
+  try{
+    let doc = await db.collection('admin_agents').doc(agentId).get();
+    if(!doc.exists){
+      const [s1,s2] = await Promise.all([
+        db.collection('admin_agents').where('phone','==',phone).get(),
+        db.collection('admin_agents').where('phone','==',localFmt).get()
+      ]);
+      const d = [...s1.docs, ...s2.docs][0];
+      if(!d) return;
+      doc = d;
+    }
+    const fresh = { id:doc.id, ...doc.data() };
+    localStorage.setItem('ag_agent', JSON.stringify(fresh));
+    if(agent && agent.id === fresh.id) agent = fresh;
+  }catch(e){ /* silent — cached profile is valid */ }
+}
+
+async function doRegister(){
+  // Self-registration is not allowed — agents must be added by admin
+  showErr("You can't self-register. AariNAT must add you. Call +234 816 543 8265");
+}
+
+function showErr(msg){ const e=$('login-err'); e.textContent=msg; e.style.display='block'; }
+
+function startApp(){
+  $('login').style.display='none';
+  // Use 'flex' for the app — it uses flex layout for header/main/nav stacking
+  $('app').style.display='flex';
+  $('app').style.flexDirection='column';
+  $('agent-name-hdr').textContent=agent.name;
+  SQ.ping();
+  go('submit');
+}
+
+function logout(){ if(!confirm('Logout?'))return; localStorage.removeItem('ag_agent'); location.reload(); }
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 function go(tab){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
-  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));
+  document.querySelectorAll('.nlink').forEach(b=>b.classList.remove('on'));
   $(`sec-${tab}`).classList.add('on');
-  const btn=document.querySelector(`[data-t="${tab}"]`);if(btn)btn.classList.add('on');
-  if(tab==='dashboard') renderDashboard();
-  if(tab==='approved')  renderApproved();
-  if(tab==='agents')    renderAgents();
-  if(tab==='ledger')    renderLedger();
-  if(tab==='opps')      renderOpps();
-  if(tab==='settings')  loadSettings();
+  const btn=document.querySelector(`[data-tab="${tab}"]`);
+  if(btn) btn.classList.add('on');
+  if(tab==='deals') renderDeals();
+  if(tab==='earnings') renderEarnings();
 }
 
-// ── Init ───────────────────────────────────────────────────────────────────
-async function initAdmin(){
-  // Only seed settings and CAC if they don't exist — no demo agents, no demo deals
-  try{
-    const sd=await db.collection('admin_settings').doc('main').get();
-    if(!sd.exists)await db.collection('admin_settings').doc('main').set({
-      adminPassword:'aarinat2024',
-      defaultSchoolPassword:'bloom2026',
-      autoCAC:'full',
-      whatsappTemplate:'*Welcome to Educational Bloom!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://kobomoba.github.io/School-Bloom/\n\nLog in and start recovering your fees.\n– AariNAT Admin'
-    });
-    const cac=await db.collection('admin_cac').doc('progress').get();
-    if(!cac.exists)await db.collection('admin_cac').doc('progress').set({raised:0});
-  }catch(e){console.warn('init:',e);}
-  await renderDashboard();
-  startPendingListener();
-  startAgentsListener();
-  go('dashboard');
+// ── Submit Deal ────────────────────────────────────────────────────────────
+function selectTier(el, price, name, max){
+  document.querySelectorAll('.tier').forEach(t=>t.classList.remove('sel'));
+  el.classList.add('sel');
+  selTier={price,name,max};
+  updateCommission();
 }
 
-// ── Real-time pending listener ─────────────────────────────────────────────
-function startPendingListener(){
-  if(!db)return;
-  if(pendingUnsub)pendingUnsub();
-  pendingUnsub=db.collection('admin_deals').where('status','==','pending').onSnapshot(snap=>{
-    const deals=snap.docs.map(d=>({id:d.id,...d.data()}));
-    $('pending-badge').textContent=deals.length;
-    $('d-pending').textContent=deals.length;
-    renderPendingList(deals);
-  },err=>console.warn('pending listener:',err));
-}
-
-// ── Real-time agents listener ──────────────────────────────────────────────
-function startAgentsListener(){
-  if(!db)return;
-  if(agentsUnsub)agentsUnsub();
-  // Show loading state immediately
-  const c=$('agents-list');
-  if(c)c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">⏳ Loading agents...</p>';
-
-  agentsUnsub=db.collection('admin_agents').onSnapshot(snap=>{
-    _agentsCache=snap.docs.map(d=>({id:d.id,...d.data()}));
-    _agentsLoaded=true;
-    renderAgentsListFromCache();
-    // refresh dashboard agent count
-    const el=$('d-agents');if(el)el.textContent=_agentsCache.length;
-  },err=>{
-    console.warn('agents listener error:',err);
-    // Fallback: show error with manual refresh button
-    const c=$('agents-list');
-    if(c)c.innerHTML=`<div style="text-align:center;padding:2rem;">
-      <p style="color:#f87171;margin-bottom:0.75rem;">⚠️ Could not load agents. Check your connection.</p>
-      <button class="btn-b" style="width:auto;" onclick="startAgentsListener()">🔄 Retry</button>
-    </div>`;
+function autoTier(){
+  const n=parseInt($('s-count').value)||0;
+  if(!n)return;
+  const t=TIERS_LIST.find(x=>n<=x.max)||TIERS_LIST[4];
+  document.querySelectorAll('.tier').forEach((el,i)=>{
+    el.classList.toggle('sel', TIERS_LIST[i]?.name===t.name);
   });
+  selTier=t;
+  updateCommission();
 }
 
-function renderAgentsListFromCache(){
-  const c=$('agents-list');
-  if(!c)return;
-  if(!_agentsLoaded){
-    c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">⏳ Loading agents...</p>';
-    return;
-  }
-  if(!_agentsCache.length){
-    c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">No agents registered. Use the button above to add your first agent.</p>';
-    return;
-  }
-  c.innerHTML=_agentsCache.map(a=>`
-    <div class="deal" style="border-left:3px solid var(--brand);">
-      <div class="dn">${esc(a.name)}</div>
-      <div class="dm">📱 ${esc(a.phone||'')} · Commission: ${a.commission||20}%</div>
-      <div class="dact" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
-        <button class="btn-sm" style="background:#1e40af;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-weight:700;" onclick="openEditAgent('${a.id}')">✏️ Edit</button>
-        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-weight:700;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Delete Agent</button>
-      </div>
-    </div>`).join('');
+function updateCommission(){
+  if(!selTier)return;
+  const terms=parseInt($('s-terms').value)||1;
+  const total=selTier.price*terms;
+  const comm=Math.round(total*((agent.commission||20)/100));
+  $('comm-box').style.display='block';
+  $('comm-amt').textContent=fmt(comm);
+  $('comm-total').textContent=`Total school pays: ${fmt(total)} for ${terms} term${terms>1?'s':''}`;
 }
 
-async function renderAgents(){
-  renderAgentsListFromCache();
-  await renderAgentPerformance();
-}
+async function submitDeal(){
+  const name=$('s-name').value.trim();
+  const phone=$('s-phone').value.trim().replace(/\D/g,'');
+  const email=$('s-email').value.trim();
+  const count=parseInt($('s-count').value)||0;
+  const terms=parseInt($('s-terms').value)||1;
+  const notes=$('s-notes').value.trim();
+  const fb=$('submit-fb');
 
-async function renderAgentPerformance(){
-  let ledger=[],deals=[];
-  try{
-    ledger=(await db.collection('admin_ledger').get()).docs.map(d=>d.data());
-    deals=(await db.collection('admin_deals').get()).docs.map(d=>d.data());
-  }catch(e){console.warn('perf table:',e);}
-  const body=$('agent-perf-body');if(!body)return;
-  if(!_agentsCache.length){
-    body.innerHTML='<tr><td colspan="5" style="text-align:center;color:var(--sub);padding:1rem;">No agents yet.</td></tr>';
-    return;
-  }
-  body.innerHTML=_agentsCache.map(a=>{
-    const d=deals.filter(x=>x.agent?.name===a.name).length;
-    const comm=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
-    const paid=ledger.filter(l=>l.agent===a.name&&l.paid).reduce((s,l)=>s+(l.amount||0),0);
-    return`<tr>
-      <td>${esc(a.name)}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(a.phone||'')}</td>
-      <td>${d}</td>
-      <td style="color:var(--money);font-weight:700;">${fmt(comm)} <span style="font-size:0.68rem;color:var(--sub);">(${fmt(paid)} paid)</span></td>
-      <td><span class="chip ca" style="position:static;">Active</span></td>
-    </tr>`;
-  }).join('');
-}
+  if(!name){ showFB(fb,'bad','Enter the school name.'); return; }
+  if(!phone||phone.length<10){ showFB(fb,'bad','Enter principal\'s WhatsApp (e.g. 2348012345678).'); return; }
+  if(!count||count<1){ showFB(fb,'bad','Enter approximate number of students.'); return; }
+  if(!selTier){ showFB(fb,'bad','Select a pricing tier.'); return; }
 
-function renderPendingList(deals){
-  const c=$('pending-list');
-  if(!deals.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">✅ No pending deals.</p>';return;}
-  c.innerHTML=deals.map(d=>{
-    const comm=Math.round((d.tier?.price||0)*((d.agent?.commission||20)/100)*(d.terms||1));
-    return`<div class="deal pend">
-      <span class="chip cp">PENDING</span>
-      <div class="dn">${esc(d.school?.name)}</div>
-      <div class="dm">Agent: ${esc(d.agent?.name)} · ${d.school?.studentCount||0} students</div>
-      <div class="dm">📱 ${esc(d.school?.phone)}</div>
-      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price)}/term · Commission: ${fmt(comm)}</div>
-      ${d.notes?`<div class="dm" style="font-style:italic;margin-top:4px;">"${esc(d.notes)}"</div>`:''}
-      <div class="dact">
-        <button class="btn-g btn-sm" onclick="openApproveModal('${d.id}')">✅ Approve</button>
-        <button class="btn-d btn-sm" onclick="rejectDeal('${d.id}','${esc(d.school?.name)}')">❌ Reject</button>
-        <button class="btn-sm" style="background:#374151;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteDeal('${d.id}','${esc(d.school?.name)}')">🗑️ Delete</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// ── Approve ────────────────────────────────────────────────────────────────
-async function openApproveModal(dealId){
-  let deal;
-  try{const doc=await db.collection('admin_deals').doc(dealId).get();if(!doc.exists)return alert('Deal not found.');deal=doc.data();}
-  catch(e){alert('Connection error.');return;}
-  const sd=await db.collection('admin_settings').doc('main').get().catch(()=>null);
-  const defPwd=sd?.exists?(sd.data().defaultSchoolPassword||'bloom2026'):'bloom2026';
-  const schoolId=genId();
-  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;">
-    <div><b>School:</b> ${esc(deal.school?.name)}</div>
-    <div><b>Phone:</b> ${esc(deal.school?.phone)}</div>
-    <div><b>Students:</b> ${deal.school?.studentCount||0}</div>
-    <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>
-    <div><b>Agent:</b> ${esc(deal.agent?.name)}</div>
-  </div>`;
-  $('ap-id').textContent=schoolId;
-  $('ap-pwd').textContent=defPwd;
-  approvalData={id:dealId,deal,schoolId,password:defPwd};
-  openM('approve-modal');
-}
-
-async function confirmApproval(){
-  if(!approvalData)return;
-  const{id,deal,schoolId,password}=approvalData;
-  const commission=Math.round((deal.tier?.price||0)*((deal.agent?.commission||20)/100)*(deal.terms||1));
-  SQ.push({t:'updateDeal',id,d:{status:'approved',schoolId,approvedAt:new Date()}});
-  SQ.push({t:'addSchoolRecord',d:{schoolId,schoolName:deal.school?.name,principalPhone:deal.school?.phone,principalEmail:deal.school?.email||'',password,tier:deal.tier?.name,tierPrice:deal.tier?.price,agentName:deal.agent?.name,agentPhone:deal.agent?.phone,approvedAt:new Date(),termsPaid:deal.terms||1}});
-  const schoolDoc={
-    config:{plan:'basic',fee:50000,schoolName:deal.school?.name||'',principalEmail:deal.school?.email||'',whatsapp:deal.school?.phone||'',studentCount:deal.school?.studentCount||0,tier:deal.tier?.name||'',tierPrice:deal.tier?.price||0,createdAt:new Date().toISOString(),trialStart:new Date().toISOString(),agent:{name:deal.agent?.name||'',phone:deal.agent?.phone||'',agentId:deal.agent?.id||''}},
-    staff:[{name:'Principal',email:deal.school?.email||(schoolId.toLowerCase()+'@bloom.edu.ng'),password,role:'Principal',phone:deal.school?.phone||''}],
-    students:[],expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
-    music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]
+  const btn=$('submit-btn'); btn.textContent='Submitting...'; btn.disabled=true;
+  const deal={
+    timestamp:new Date(), status:'pending',
+    agent:{ id:agent.id, name:agent.name, phone:agent.phone, commission:agent.commission||20 },
+    school:{ name, phone, email, studentCount:count },
+    tier:{ name:selTier.name, price:selTier.price },
+    terms, notes
   };
+
   try{
-    await db.collection('schools').doc(schoolId).set(schoolDoc,{merge:true});
-    console.log('✅ School created:',schoolId);
+    if(db&&navigator.onLine){ await db.collection('admin_deals').add(deal); }
+    else{ SQ.push({t:'deal',d:deal}); }
+    showFB(fb,'ok',`✅ "${name}" submitted! ${navigator.onLine?'':'(Saved offline — will reach Bayo when internet returns.) '}Your commission will be ${fmt(Math.round(selTier.price*terms*((agent.commission||20)/100))/1)} on approval.`);
+    // Reset form
+	['s-name','s-phone','s-email','s-count','s-notes'].forEach(id=>$(id).value='');
+    $('s-terms').value='1';
+    document.querySelectorAll('.tier').forEach(t=>t.classList.remove('sel'));
+    selTier=null; $('comm-box').style.display='none';
+    resetCSVCount();
   }catch(e){
-    console.warn('Direct write failed, queuing:',e);
-    SQ.push({t:'createSchool',id:schoolId,d:schoolDoc});
+    // Write failed — queue it so the deal is never lost
+    SQ.push({t:'deal',d:deal});
+    showFB(fb,'ok',`📥 "${name}" saved offline — will reach Bayo when connection returns.`);
+    console.warn('submitDeal write failed, queued:', e?.message);
   }
-  SQ.push({t:'addLedger',d:{dealId:id,schoolId,agent:deal.agent?.name,agentPhone:deal.agent?.phone,amount:commission,paid:false,date:new Date()}});
+  btn.textContent='📤 Submit to Bayo'; btn.disabled=false;
+}
+
+function showFB(el,type,msg){ el.className=`feedback ${type}`; el.textContent=msg; el.style.display='block'; }
+
+// ── My Deals ───────────────────────────────────────────────────────────────
+async function renderDeals(){
+  const c=$('deals-list'); c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">Loading...</p>';
+
+  // Always show offline-queued deals first (they exist even without internet)
+  const queued = SQ.q
+    .filter(x => x.op?.t === 'deal' && x.op?.d?.agent?.id === agent.id)
+    .map(x => ({ _queuedId: x.id, _offline: true, ...x.op.d }));
+
+  let deals = [];
   try{
-    const sd=await db.collection('admin_settings').doc('main').get();
-    const autoCAC=sd.exists?(sd.data().autoCAC||'full'):'full';
-    const cacDoc=await db.collection('admin_cac').doc('progress').get();
-    let raised=cacDoc.exists?(cacDoc.data().raised||0):0;
-    if(autoCAC==='full')raised+=commission;
-    else if(autoCAC==='half')raised+=Math.round(commission/2);
-    SQ.push({t:'updateCAC',d:{raised,updatedAt:new Date()}});
-    updateCACDisplay(raised);
-    const tpl=sd.exists?(sd.data().whatsappTemplate||''):'';
-    const msg=tpl.replace(/{{schoolId}}/g,schoolId).replace(/{{password}}/g,password);
-    window.open(`https://wa.me/${(deal.school?.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
-  }catch(e){console.warn('CAC/WA:',e);}
-  await log(`✅ Approved: ${deal.school?.name} → ${schoolId} · ${fmt(commission)} commission`);
-  closeM('approve-modal');
-  approvalData=null;
-  renderDashboard();
-  renderApproved();
-}
+    // Try by agent.id first (most reliable), fall back to agent.phone
+    const snap = await db.collection('admin_deals').where('agent.id','==',agent.id).get();
+    deals = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(!deals.length){
+      // Fallback for deals submitted before agent had an ID cached
+      const snap2 = await db.collection('admin_deals').where('agent.phone','==',agent.phone).get();
+      deals = snap2.docs.map(d=>({id:d.id,...d.data()}));
+    }
+    deals.sort((a,b)=>{ const ta=a.timestamp?.toDate?a.timestamp.toDate():new Date(a.timestamp||0); const tb=b.timestamp?.toDate?b.timestamp.toDate():new Date(b.timestamp||0); return tb-ta; });
+  }catch(e){ /* offline — queued deals still show */ }
 
-async function repairSchool(schoolId){
-  if(!schoolId)schoolId=prompt('Enter School ID to repair (e.g. BLOOM-CYW96U):');
-  if(!schoolId)return;
-  schoolId=schoolId.trim().toUpperCase();
-  try{
-    const snap=await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
-    if(snap.empty){alert('School ID not found.');return;}
-    const s=snap.docs[0].data();
-    const schoolDoc={config:{plan:'basic',fee:50000,schoolName:s.schoolName||'',principalEmail:s.principalEmail||'',whatsapp:s.principalPhone||'',createdAt:new Date().toISOString()},staff:[{name:'Principal',email:s.principalEmail||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:s.password,role:'Principal',phone:s.principalPhone||''}],students:[],expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]};
-    await db.collection('schools').doc(schoolId).set(schoolDoc,{merge:true});
-    alert('✅ Repaired!\n\nSchool ID: '+schoolId+'\nPassword: '+s.password);
-    log('🔧 Repaired school: '+schoolId);
-  }catch(e){alert('Repair failed: '+(e.message||e));}
-}
+  const allDeals = [...queued, ...deals];
+  if(!allDeals.length){ c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">No deals yet. Submit your first school!</p>'; return; }
 
-async function rejectDeal(dealId,schoolName){
-  if(!confirm(`Reject deal for "${schoolName}"? It will be marked rejected but stay in the database.`))return;
-  SQ.push({t:'updateDeal',id:dealId,d:{status:'rejected',rejectedAt:new Date()}});
-  await log(`❌ Rejected deal: ${schoolName}`);
-  renderDashboard();
-}
-
-// DELETE a pending deal entirely (removes from database)
-async function deleteDeal(dealId, schoolName){
-  if(!confirm(`Permanently delete this pending deal for "${schoolName}"? It cannot be recovered.`))return;
-  if(!db){alert('No database connection.');return;}
-  try{
-    await db.collection('admin_deals').doc(dealId).delete();
-    await log(`🗑️ Deleted pending deal: ${schoolName}`);
-  }catch(e){alert('Delete failed: '+(e.message||e));}
-}
-
-// ── Dashboard ──────────────────────────────────────────────────────────────
-async function renderDashboard(){
-  try{
-    const[appr,ledger,cac]=await Promise.all([
-      db.collection('admin_approved_schools').get(),
-      db.collection('admin_ledger').get(),
-      db.collection('admin_cac').doc('progress').get()
-    ]);
-    $('d-approved').textContent=appr.size;
-    $('d-agents').textContent=_agentsCache.length;
-    let total=0;ledger.forEach(d=>total+=d.data().amount||0);
-    $('d-commission').textContent=fmt(total);
-    const raised=cac.exists?(cac.data().raised||0):0;
-    updateCACDisplay(raised);
-  }catch(e){console.warn('dashboard:',e);}
-  renderActivity();
-}
-
-async function renderActivity(){
-  const c=$('activity-feed');if(!c)return;
-  let logs=[];
-  try{logs=(await db.collection('admin_activity').orderBy('timestamp','desc').limit(10).get()).docs.map(d=>d.data());}
-  catch(e){logs=JSON.parse(localStorage.getItem('ad_act')||'[]');}
-  if(!logs.length){c.innerHTML='<em style="color:var(--sub);">No activity yet.</em>';return;}
-  c.innerHTML=logs.map(l=>{
-    const t=l.timestamp?.toDate?l.timestamp.toDate():new Date(l.timestamp);
-    return`<div style="padding:0.4rem 0;border-bottom:1px solid var(--border);font-size:0.82rem;"><span style="font-size:0.7rem;color:var(--sub);">${t.toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span><br>${esc(l.message)}</div>`;
+  c.innerHTML=allDeals.map(d=>{
+    const isOffline = !!d._offline;
+    const status = isOffline ? 'queued' : (d.status||'pending');
+    const chipCls = status==='approved'?'chip-a':status==='rejected'?'chip-r':'chip-p';
+    const comm=Math.round((d.tier?.price||0)*((d.agent?.commission||20)/100)*(d.terms||1));
+    const ts = isOffline ? 'Saved offline — syncing when online' :
+      (d.timestamp?.toDate ? d.timestamp.toDate().toLocaleDateString('en-NG') : 'just now');
+    return `<div class="deal ${status==='approved'?'appr':status==='rejected'?'rejt':'pend'}" style="${isOffline?'opacity:0.85;':''}">
+      <span class="chip ${chipCls}">${status.toUpperCase()}</span>
+      <div class="deal-name">${esc(d.school?.name)}</div>
+      <div class="deal-meta">📊 ${d.school?.studentCount||0} students · ${esc(d.tier?.name||'—')}</div>
+      <div class="deal-meta">📱 ${esc(d.school?.phone||'—')}</div>
+      <div class="deal-meta" style="color:var(--money);font-weight:600;">Your commission: ${fmt(comm)}</div>
+      <div class="deal-meta" style="font-size:0.72rem;color:var(--sub);">${ts}</div>
+      ${d.schoolId?`<div class="deal-meta" style="color:#60a5fa;">School ID: ${d.schoolId}</div>`:''}
+      ${isOffline?`<div class="deal-meta" style="color:#fbbf24;font-size:0.72rem;">⏳ Will reach Bayo when internet returns</div>`:''}
+      ${status==='approved'?`<div style="margin-top:0.5rem;"><button class="btn-money btn-sm" onclick="resendOnboarding('${esc(d.school?.phone)}','${esc(d.school?.name)}','${d.schoolId||''}')">📲 Send Onboarding WhatsApp</button></div>`:''}
+    </div>`;
   }).join('');
 }
 
-// ── CAC ────────────────────────────────────────────────────────────────────
-function updateCACDisplay(raised){
-  const pct=Math.min(100,Math.round((raised/250000)*100));
-  $('cac-fill').style.width=pct+'%';
-  $('cac-raised').textContent=fmt(raised);
-  $('cac-left').textContent=fmt(Math.max(0,250000-raised));
+function resendOnboarding(phone, schoolName, schoolId){
+  const msg=`Hi! I'm your Educational Bloom agent.\n\nYour school "${schoolName}" has been activated! 🎉\n\n*School ID:* ${schoolId}\n\nLog in at: https://kobomoba.github.io/bloom-portal/\n\nI'll guide you through the setup. Call me anytime! 📞\n– ${agent.name}`;
+  window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
-async function addCAC(){
-  const amt=parseFloat($('cac-amt').value);
-  const note=$('cac-note').value.trim()||'Manual contribution';
-  if(!amt||amt<=0)return alert('Enter a valid amount.');
-  let raised=0;
-  try{const doc=await db.collection('admin_cac').doc('progress').get();raised=doc.exists?(doc.data().raised||0):0;}catch(e){}
-  raised+=amt;
-  SQ.push({t:'updateCAC',d:{raised,updatedAt:new Date()}});
-  $('cac-amt').value='';$('cac-note').value='';
-  updateCACDisplay(raised);
-  log(`💰 CAC +${fmt(amt)} — ${note}`);
-}
-
-// ── Approved Schools ───────────────────────────────────────────────────────
-async function renderApproved(){
-  const c=$('approved-list');
-  if(c)c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">⏳ Loading schools...</p>';
-  let schools=[];
-  let liveData={};
+// ── Earnings ───────────────────────────────────────────────────────────────
+async function renderEarnings(){
   try{
-    schools=(await db.collection('admin_approved_schools').get()).docs.map(d=>({_id:d.id,...d.data()}));
-    const snaps=await Promise.allSettled(schools.map(s=>db.collection('schools').doc(s.schoolId).get()));
-    snaps.forEach((r,i)=>{
-      if(r.status==='fulfilled'&&r.value.exists){
-        const cfg=r.value.data().config||{};
-        liveData[schools[i].schoolId]={studentCount:cfg.studentCount||0,tierExceededAt:cfg.tierExceededAt||null,tierExceededNewTier:cfg.tierExceededNewTier||null,plan:cfg.plan||'basic',tierMax:cfg.tierMax||0};
-      }
-    });
-  }catch(e){
-    console.error('renderApproved:',e);
-    if(c)c.innerHTML=`<div style="text-align:center;padding:2rem;">
-      <p style="color:#f87171;margin-bottom:0.75rem;">⚠️ Could not load schools. Check connection.</p>
-      <button class="btn-b" style="width:auto;" onclick="renderApproved()">🔄 Retry</button>
-    </div>`;
+    const snap=await db.collection('admin_ledger').where('agentPhone','==',agent.phone).get();
+    const entries=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const total=entries.reduce((s,e)=>s+(e.amount||0),0);
+    const paid=entries.filter(e=>e.paid).reduce((s,e)=>s+(e.amount||0),0);
+    $('earn-total').textContent=fmt(total);
+    $('earn-paid').textContent=fmt(paid);
+    $('earn-pending').textContent=fmt(total-paid);
+    const tbody=$('earn-body');
+    tbody.innerHTML=entries.length===0?'<tr><td colspan="4" style="text-align:center;color:var(--sub);padding:2rem;">No earnings yet.</td></tr>':entries.map(e=>{
+      const dt=e.date?.toDate?e.date.toDate():new Date();
+      const paidCls=e.paid?'chip-a':'chip-p';
+      return `<tr><td>${dt.toLocaleDateString('en-NG',{day:'numeric',month:'short'})}</td><td style="font-size:0.75rem;">${e.schoolId||'—'}</td><td style="color:var(--money);font-weight:700;">${fmt(e.amount||0)}</td><td><span class="chip ${paidCls}" style="position:static;">${e.paid?'Paid':'Pending'}</span></td></tr>`;
+    }).join('');
+  }catch(e){ console.warn('Earnings:',e); }
+}
+
+
+// ── Smart Register Counter ─────────────────────────────────────────────────
+// Accepts: CSV, TXT (WhatsApp lists), JPG/PNG photos of paper registers
+// Photos: OCR via Tesseract.js loaded on demand — free, no API key needed
+
+let csvStudentCount = 0;
+let csvParsedNames  = [];
+
+
+
+// Strip prefix titles and list markers, return cleaned name or false
+function cleanName(raw) {
+  // Strip leading numbering: "1.", "22.", "10.", "•", "-", "(1)"
+  let s = raw.replace(/^[\s]*\d+[\.\)\s]+/, '').trim();
+  s = s.replace(/^[\s\u2022\-\*]+/, '').trim();
+
+  // Strip Nigerian title prefixes — keep everything after the last "." in prefix
+  // Handles: Hon/Snr/Evang. | Sp/Ven/Evang. | MC. | C/E/B. | L/S/S/E/S. | M/C | C/P | S/P/S
+  s = s.replace(/^((?:[A-Z][a-zA-Z]*\/)*[A-Z][a-zA-Z]*\.\s*)+/g, '').trim();
+  // Also strip standalone abbreviation prefixes before the real name
+  s = s.replace(/^(M\/C|MC|C\/P|S\/P\/S|C\/E\/B|L\/S\/[A-Z\/]+)\s+/i, '').trim();
+
+  if (!s || s.length < 3) return null;
+
+  const letters = s.replace(/[^a-zA-Z\s]/g, '').trim();
+  if (letters.length < 3) return null;
+
+  // Reject if too many special/garbage chars (OCR noise)
+  const specialRatio = s.replace(/[a-zA-Z\s]/g, '').length / s.length;
+  if (specialRatio > 0.35) return null;
+
+  // Reject obvious non-names
+  if (/^(general|members|list|students|class|section|total|name|s\/n|serial|no\.|page|date|school|am|pm|\d{1,2}:\d{2})/i.test(letters.trim())) return null;
+
+  // Must be mostly letters
+  const letterRatio = letters.length / Math.max(s.length, 1);
+  if (letterRatio < 0.55) return null;
+
+  // Must look like a name: at least one word with 2+ letters
+  const words = s.split(/\s+/).filter(w => /[a-zA-Z]{2,}/.test(w));
+  if (words.length < 1) return null;
+
+  return s;
+}
+
+// Check if a line STARTS a new numbered entry (has leading number)
+function isNumberedLine(line) {
+  return /^\s*\d+[\.\)\s]/.test(line);
+}
+
+// Check if a line is a bullet/dash entry
+function isBulletLine(line) {
+  return /^\s*[\u2022\-\*]\s/.test(line);
+}
+
+function showLoading(msg) {
+  const box = document.getElementById('csv-count-result');
+  const ld  = document.getElementById('csv-loading');
+  box.style.display = 'block';
+  ld.style.display  = 'block';
+  ld.textContent    = msg || 'Reading...';
+  document.getElementById('csv-name-preview').innerHTML = '';
+  document.getElementById('csv-class-breakdown').innerHTML = '';
+}
+
+function renderCountResult(names) {
+  const unique = [...new Set(names.map(n=>n.trim()).filter(n=>n.length>1))];
+  document.getElementById('csv-loading').style.display = 'none';
+  if (!unique.length) {
+    document.getElementById('csv-count-result').style.display = 'none';
+    alert('No student names found.\n\nFor photos: ensure the image is clear and well-lit.\nFor CSV/text: one name per line.');
     return;
   }
-  const q=($('search-approved')?.value||'').toLowerCase();
-  if(q)schools=schools.filter(s=>(s.schoolName||'').toLowerCase().includes(q)||(s.schoolId||'').toLowerCase().includes(q));
-  if(!schools.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">No approved schools.</p>';return;}
-  const TIERS=[{max:50,price:10000,name:'Starter (1–50)'},{max:100,price:20000,name:'Small (51–100)'},{max:200,price:35000,name:'Medium (101–200)'},{max:350,price:55000,name:'Large (201–350)'},{max:9999,price:75000,name:'Enterprise (351+)'}];
-  c.innerHTML=schools.map(s=>{
-    const live=liveData[s.schoolId]||{};
-    const count=live.studentCount||0;
-    const isPrem=live.plan==='premium';
-    const tierExceeded=!!live.tierExceededAt;
-    const tierMax=live.tierMax||TIERS.find(t=>(s.tierPrice||0)<=t.price)?.max||50;
-    const newTier=live.tierExceededNewTier||{};
-    const statusChip=tierExceeded?`<span class="chip" style="background:#dc2626;color:#fff;">⚠️ OVER TIER</span>`:`<span class="chip ca">ACTIVE</span>`;
-    const planChip=isPrem?`<span class="chip" style="background:#7c3aed;color:#fff;margin-left:4px;">⭐ PREMIUM</span>`:'';
-    const overAlert=tierExceeded?`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.4rem 0.6rem;font-size:0.74rem;color:#dc2626;margin-top:4px;">⚠️ ${count} students exceeds tier limit (${tierMax}). Needs upgrade to <b>${newTier.name||'?'}</b> — ${fmt(newTier.price||0)}/term</div>`:'';
-    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">
-      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">${statusChip}${planChip}${count?`<span style="font-size:0.7rem;background:#1a3048;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}</div>
-      <div class="dn">${esc(s.schoolName)}</div>
-      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>
-      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>
-      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>
-      ${overAlert}
-      <div class="dact" style="flex-wrap:wrap;gap:6px;margin-top:8px;">
-        <button class="btn-sm" style="background:#25d366;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="resend('${s.schoolId}')">📤 Resend</button>
-        <button class="btn-sm" style="background:#374151;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;" onclick="copyC('${s.schoolId}')">📋 Copy</button>
-        <button class="btn-sm" style="background:#1e40af;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>
-        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.78rem;cursor:pointer;font-weight:700;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Delete School</button>
-        ${isPrem
-          ?`<button onclick="setPlan('${s.schoolId}','basic')" style="background:#1a3048;border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
-          :`<button onclick="setPlan('${s.schoolId}','premium')" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;">⭐ Activate Premium</button>`}
-        ${tierExceeded?`<button onclick="unlockSchool('${s.schoolId}')" style="background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:5px 10px;font-size:0.74rem;cursor:pointer;color:#16a34a;font-weight:700;">🔓 Unlock (paid)</button>`:''}
-      </div>
-    </div>`;
-  }).join('');
+  csvStudentCount = unique.length;
+  csvParsedNames  = unique.map(name => ({ name, class: null }));
+  const tier = TIERS_LIST.find(t => csvStudentCount <= t.max) || TIERS_LIST[4];
+  const comm = Math.round(tier.price * 0.20);
+  document.getElementById('csv-student-count').textContent = csvStudentCount;
+  document.getElementById('csv-tier-name').textContent     = tier.name;
+  document.getElementById('csv-school-pays').textContent   = '\u20a6' + tier.price.toLocaleString('en-NG') + '/term';
+  document.getElementById('csv-your-comm').textContent     = '\u20a6' + comm.toLocaleString('en-NG');
+  const preview = unique.slice(0, 15);
+  const extra   = unique.length - preview.length;
+  document.getElementById('csv-name-preview').innerHTML =
+    '<strong style="display:block;margin-bottom:5px;color:white;">Names found (' + unique.length + ') — verify a few are correct:</strong>' +
+    preview.map(n => '<span style="display:inline-block;background:rgba(255,255,255,0.08);border-radius:5px;padding:2px 7px;margin:2px;font-size:0.72rem;color:#e2e8f0;">' + esc(n) + '</span>').join('') +
+    (extra > 0 ? '<div style="font-size:0.71rem;color:var(--sub);margin-top:4px;">...and ' + extra + ' more</div>' : '');
+  document.getElementById('csv-class-breakdown').innerHTML = '';
+  document.getElementById('csv-count-result').style.display = 'block';
 }
 
-async function setPlan(schoolId,plan){
-  if(!confirm(`Set ${schoolId} to ${plan.toUpperCase()} plan?`))return;
-  try{
-    await db.collection('schools').doc(schoolId).update({'config.plan':plan});
-    const snap=await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
-    if(!snap.empty)await snap.docs[0].ref.update({plan});
-    await log(`⭐ ${schoolId} set to ${plan.toUpperCase()}`);
-    renderApproved();
-  }catch(e){alert('Error: '+e.message);}
+function handleRegisterCSV(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const name = (file.name || '').toLowerCase();
+  const type = (file.type || '').toLowerCase();
+  const isImage = type.startsWith('image/') || /\.(jpg|jpeg|png|webp|bmp)$/.test(name);
+  if (isImage) {
+    readImageWithOCR(file);
+  } else {
+    showLoading('Counting students...');
+    readTextOrCSV(file);
+  }
+  e.target.value = '';
 }
 
-async function unlockSchool(schoolId){
-  if(!confirm(`Confirm payment received and unlock ${schoolId}?`))return;
-  try{
-    await db.collection('schools').doc(schoolId).update({'config.tierExceededAt':null,'config.tierExceededNewTier':null});
-    const alerts=await db.collection('admin_alerts').where('schoolId','==',schoolId).where('resolved','==',false).get();
-    alerts.docs.forEach(d=>d.ref.update({resolved:true,resolvedAt:new Date()}));
-    await log(`🔓 Unlocked ${schoolId} after tier upgrade payment`);
-    renderApproved();
-  }catch(e){alert('Error: '+e.message);}
+// Core extraction: joins continuation lines, handles CSV and plain text
+// A "continuation line" is a line that does NOT start with a number or bullet
+// — meaning it is the second line of a wrapped name like "Abiodun\nKogbodoku"
+function extractNamesFromText(raw) {
+  const rawLines = raw.split(/\r?\n/);
+  const names = [];
+
+  // Step 1: join continuation lines with the previous numbered/bulleted line
+  const joined = [];
+  let current = null;
+
+  rawLines.forEach(line => {
+    const t = line.trim();
+    if (!t) {
+      // blank line ends current entry
+      if (current !== null) { joined.push(current); current = null; }
+      return;
+    }
+    // Is this a CSV line? (contains comma — treat each col0 independently)
+    if (t.includes(',') && !isNumberedLine(t) && !isBulletLine(t)) {
+      if (current !== null) { joined.push(current); current = null; }
+      joined.push(t.split(',')[0].replace(/"/g,'').trim());
+      return;
+    }
+    if (isNumberedLine(t) || isBulletLine(t)) {
+      // New numbered entry — save previous
+      if (current !== null) joined.push(current);
+      current = t;
+    } else {
+      if (current !== null) {
+        // Continuation of previous — append if it looks like more of a name
+        // Only join if continuation line has no numbers and looks like word(s)
+        const words = t.replace(/[^a-zA-Z\s]/g,'').trim();
+        if (words.length > 1 && t.length < 40) {
+          current = current + ' ' + t;
+        } else {
+          // Not a continuation — save current and start fresh
+          joined.push(current);
+          current = t;
+        }
+      } else {
+        // No current entry — treat as standalone line (plain list without numbers)
+        current = t;
+      }
+    }
+  });
+  if (current !== null) joined.push(current);
+
+  // Step 2: clean each joined line and extract the name
+  joined.forEach(line => {
+    const cleaned = cleanName(line);
+    if (cleaned) names.push(cleaned);
+  });
+
+  return names;
 }
 
-async function resend(schoolId){
-  try{
-    const snap=await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
-    if(snap.empty)return alert('Not found.');
-    const s=snap.docs[0].data();
-    const sd=await db.collection('admin_settings').doc('main').get().catch(()=>null);
-    const tpl=sd?.exists?(sd.data().whatsappTemplate||''):'School ID: {{schoolId}}\nPassword: {{password}}';
-    const msg=tpl.replace(/{{schoolId}}/g,schoolId).replace(/{{password}}/g,s.password);
-    window.open(`https://wa.me/${(s.principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
-  }catch(e){alert('Failed.');}
+function readTextOrCSV(file) {
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const names = extractNamesFromText(ev.target.result);
+    renderCountResult(names);
+  };
+  reader.onerror = () => alert('Could not read file.');
+  reader.readAsText(file);
 }
 
-async function copyC(schoolId){
+function readImageWithOCR(file) {
+  showLoading('📸 Reading photo... loading OCR engine (first time takes 30 seconds)');
+  const loadTesseract = () => new Promise((resolve, reject) => {
+    if (window.Tesseract) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      await loadTesseract();
+      const { data: { text } } = await Tesseract.recognize(ev.target.result, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            const pct = Math.round((m.progress||0)*100);
+            const ld = document.getElementById('csv-loading');
+            if(ld) ld.textContent = '📸 Reading photo... ' + pct + '%';
+          }
+        }
+      });
+      const names = extractNamesFromText(text);
+      renderCountResult(names);
+    } catch(err) {
+      document.getElementById('csv-loading').style.display = 'none';
+      document.getElementById('csv-count-result').style.display = 'none';
+      alert('Photo reading failed: ' + (err.message||'unknown') + '\n\nTips:\n- Make sure photo is clear and well-lit\n- Hold phone steady above the register\n- Each name should be on its own line\n\nOr type the student count manually in the field below.');
+    }
+  };
+  reader.onerror = () => alert('Could not read image.');
+  reader.readAsDataURL(file);
+}
+
+function useCSVCount() {
+  if(!csvStudentCount) { alert('Upload a file first.'); return; }
+  const countInput = document.getElementById('s-count');
+  countInput.value = csvStudentCount;
+  autoTier();
+  countInput.scrollIntoView({behavior:'smooth', block:'center'});
+  countInput.style.borderColor = '#10b981';
+  setTimeout(() => { countInput.style.borderColor = ''; }, 2000);
+}
+
+function resetCSVCount() {
+  csvStudentCount = 0;
+  csvParsedNames  = [];
+  document.getElementById('csv-count-result').style.display = 'none';
+  document.getElementById('register-csv').value = '';
+  document.getElementById('csv-name-preview').innerHTML = '';
+  // Don't clear the student count field — let agent decide if they want to keep it
+}
+
+// ── Deep-link support ──────────────────────────────────────────────────────
+// When admin sends WhatsApp with ?phone=08012345678 the field pre-fills
+function checkDeepLink(){
   try{
-    const snap=await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
-    if(snap.empty)return;
-    const s=snap.docs[0].data();
-    const txt=`School ID: ${s.schoolId}\nPassword: ${s.password}\nPortal: https://kobomoba.github.io/School-Bloom/`;
-    navigator.clipboard.writeText(txt).then(()=>alert('✅ Copied!')).catch(()=>prompt('Copy:',txt));
+    const p = new URLSearchParams(window.location.search).get('phone') || new URLSearchParams(window.location.search).get('p');
+    if(!p) return;
+    const norm  = normalizePhone(p);
+    const local = norm.startsWith('234') ? '0' + norm.slice(3) : norm;
+    const input = $('l-phone'); if(!input) return;
+    input.value = local;
+    setTimeout(()=>{
+      const note = document.createElement('div');
+      note.style.cssText='background:rgba(37,99,235,0.12);border:1px solid rgba(37,99,235,0.3);border-radius:8px;padding:0.65rem;font-size:0.82rem;color:#60a5fa;margin-bottom:0.75rem;';
+      note.textContent='📲 Phone pre-filled. Tap Login to activate your account.';
+      const f=$('phone-form'); if(f) f.insertBefore(note, f.firstChild);
+    },150);
   }catch(e){}
 }
 
-// ── DELETE SCHOOL ──────────────────────────────────────────────────────────
-async function deleteSchool(docId,schoolId,schoolName){
-  if(!confirm(`⚠️ DELETE SCHOOL\n\nSchool: "${schoolName}"\nID: ${schoolId}\n\nThis will remove the school from the approved list AND delete their login account. They will no longer be able to access their portal.\n\nThis cannot be undone. Continue?`))return;
-  if(!db){alert('No database connection. Must be online to delete.');return;}
-  if(!navigator.onLine){alert('You are offline. Connect to the internet first.');return;}
-  try{
-    // Delete from approved schools list
-    await db.collection('admin_approved_schools').doc(docId).delete();
-    // Delete the school portal document
-    await db.collection('schools').doc(schoolId).delete().catch(()=>{});
-    await log(`🗑️ DELETED school: ${schoolName} (${schoolId})`);
-    alert(`✅ "${schoolName}" has been deleted.`);
-    renderApproved();
-    renderDashboard();
-  }catch(e){
-    alert('Delete failed: '+(e.message||e)+'\n\nCheck your internet connection and try again.');
-    console.error('deleteSchool:',e);
-  }
-}
-
-// ── Agents Save / Delete ───────────────────────────────────────────────────
-function normalizePhone(raw){
-  let p=raw.trim().replace(/\D/g,'');
-  if(p.startsWith('0')&&p.length===11)return'234'+p.slice(1);
-  if(p.startsWith('234')&&p.length===13)return p;
-  if(p.length===10)return'234'+p;
-  return p;
-}
-
-async function saveAgent(){
-  const name=$('ag-name').value.trim();
-  const phone=normalizePhone($('ag-phone').value);
-  const rate=parseFloat($('ag-rate').value)||20;
-  if(!name||!phone||phone.length<10)return alert('Name and valid phone required (e.g. 08012345678).');
-  const btn=$('add-agent-btn');
-  if(btn){btn.textContent='Saving...';btn.disabled=true;}
-  const agentData={name,phone,commission:rate,joinedAt:new Date()};
-  try{
-    if(db&&navigator.onLine){
-      await db.collection('admin_agents').add(agentData);
-      // Listener fires automatically — no manual renderAgents() needed
-    }else{
-      SQ.push({t:'addAgent',d:agentData});
-      // Show optimistically while offline
-      _agentsCache=[..._agentsCache,{id:'pending_'+Date.now(),...agentData}];
-      renderAgentsListFromCache();
-    }
-    closeM('add-agent-modal');
-    $('ag-name').value='';$('ag-phone').value='';$('ag-rate').value='20';
-    log(`👤 Added agent: ${name} (${phone})`);
-  }catch(e){
-    alert('Failed to save agent: '+(e.message||'Unknown error.'));
-    console.error('saveAgent:',e);
-  }finally{
-    if(btn){btn.textContent='💾 Add Agent';btn.disabled=false;}
-  }
-}
-
-async function deleteAgent(id,name){
-  if(!confirm(`DELETE AGENT\n\n"${name}"\n\nThis removes them from the system permanently. Their past commission records in the Ledger are NOT deleted.\n\nContinue?`))return;
-  if(!db){alert('No database connection.');return;}
-  try{
-    if(navigator.onLine){
-      await db.collection('admin_agents').doc(id).delete();
-      // Listener fires and updates list automatically
-    }else{
-      SQ.push({t:'deleteAgent',id});
-      _agentsCache=_agentsCache.filter(a=>a.id!==id);
-      renderAgentsListFromCache();
-    }
-    log(`🗑️ Deleted agent: ${name}`);
-  }catch(e){
-    alert('Delete failed: '+(e.message||e));
-    console.error('deleteAgent:',e);
-  }
-}
-
-function openEditAgent(id){
-  const a=_agentsCache.find(x=>x.id===id);
-  if(!a){alert('Agent not found. Try refreshing the page.');return;}
-  $('edit-ag-id').value=id;
-  $('edit-ag-name').value=a.name||'';
-  $('edit-ag-phone').value=a.phone||'';
-  $('edit-ag-rate').value=a.commission||20;
-  $('edit-agent-modal').classList.add('on');
-}
-
-async function saveEditAgent(){
-  const id=$('edit-ag-id').value;
-  const name=$('edit-ag-name').value.trim();
-  const phone=normalizePhone($('edit-ag-phone').value);
-  const rate=parseFloat($('edit-ag-rate').value)||20;
-  if(!name||!phone||phone.length<10)return alert('Name and valid phone required.');
-  const btn=$('edit-ag-btn');
-  if(btn){btn.textContent='Saving...';btn.disabled=true;}
-  try{
-    const data={name,phone,commission:rate};
-    if(db&&navigator.onLine){
-      await db.collection('admin_agents').doc(id).update(data);
-      // Listener updates display
-    }else{
-      _agentsCache=_agentsCache.map(a=>a.id===id?{...a,...data}:a);
-      renderAgentsListFromCache();
-    }
-    closeM('edit-agent-modal');
-    log(`✏️ Updated agent: ${name}`);
-  }catch(e){
-    alert('Error saving: '+(e.message||'Try again.'));
-  }finally{
-    if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;}
-  }
-}
-
-// ── School Edit ────────────────────────────────────────────────────────────
-function openEditSchool(docId,schoolId){
-  if(!navigator.onLine){alert('Must be online to edit.');return;}
-  db.collection('admin_approved_schools').doc(docId).get().then(doc=>{
-    if(!doc.exists)return alert('Not found.');
-    const s=doc.data();
-    $('edit-sc-docid').value=docId;
-    $('edit-sc-schoolid').value=schoolId;
-    $('edit-sc-name').value=s.schoolName||'';
-    $('edit-sc-phone').value=s.principalPhone||'';
-    $('edit-sc-email').value=s.principalEmail||'';
-    $('edit-sc-pwd').value=s.password||'';
-    $('edit-sc-agent').value=s.agentName||'';
-    $('edit-school-modal').classList.add('on');
-  }).catch(e=>alert('Error: '+e.message));
-}
-
-async function saveEditSchool(){
-  const docId=$('edit-sc-docid').value;
-  const schoolId=$('edit-sc-schoolid').value;
-  const schoolName=$('edit-sc-name').value.trim();
-  const principalPhone=$('edit-sc-phone').value.trim();
-  const principalEmail=$('edit-sc-email').value.trim();
-  const password=$('edit-sc-pwd').value.trim();
-  const agentName=$('edit-sc-agent').value.trim();
-  if(!schoolName||!principalPhone)return alert('School name and phone are required.');
-  const btn=$('edit-sc-btn');
-  if(btn){btn.textContent='Saving...';btn.disabled=true;}
-  try{
-    await db.collection('admin_approved_schools').doc(docId).update({schoolName,principalPhone,principalEmail,password,agentName,updatedAt:new Date()});
-    if(password)await db.collection('schools').doc(schoolId).update({'config.password':password}).catch(()=>{});
-    log(`✏️ Updated school: ${schoolName}`);
-    closeM('edit-school-modal');
-    renderApproved();
-  }catch(e){alert('Error: '+e.message);}
-  if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;}
-}
-
-// ── Ledger ─────────────────────────────────────────────────────────────────
-async function renderLedger(){
-  let entries=[];
-  try{entries=(await db.collection('admin_ledger').orderBy('date','desc').get()).docs.map(d=>({_id:d.id,...d.data()}));}catch(e){}
-  $('ledger-body').innerHTML=entries.length===0
-    ?'<tr><td colspan="6" style="text-align:center;color:var(--sub);padding:2rem;">No entries yet.</td></tr>'
-    :entries.map(e=>{
-      const dt=e.date?.toDate?e.date.toDate():new Date();
-      return`<tr>
-        <td style="font-size:0.75rem;">${dt.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'2-digit'})}</td>
-        <td>${esc(e.agent)}</td>
-        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;">${e.schoolId||'—'}</td>
-        <td style="color:var(--money);font-weight:700;">${fmt(e.amount)}</td>
-        <td><span class="chip ${e.paid?'ca':'cp'}" style="position:static;">${e.paid?'Paid':'Pending'}</span></td>
-        <td>${e.paid
-          ?'<span style="font-size:0.72rem;color:var(--sub);">Done</span>'
-          :`<button class="btn-g btn-sm" onclick="markPaid('${e._id}','${esc(e.agent)}',${e.amount||0})">✅ Pay</button>`
-        }</td>
-      </tr>`;
-    }).join('');
-}
-
-async function markPaid(id,agent,amount){
-  if(!confirm(`Mark ${fmt(amount)} to ${agent} as paid?`))return;
-  SQ.push({t:'updateLedger',id,d:{paid:true,paidAt:new Date()}});
-  log(`💸 Commission paid: ${fmt(amount)} → ${agent}`);
-  await new Promise(r=>setTimeout(r,600));
-  renderLedger();
-}
-
-function exportLedger(){
-  db.collection('admin_ledger').orderBy('date','desc').get().then(snap=>{
-    const rows=snap.docs.map(d=>d.data());
-    if(!rows.length)return alert('No data.');
-    const csv=[['Date','Agent','School','Amount','Status'],...rows.map(r=>{
-      const dt=r.date?.toDate?r.date.toDate():new Date();
-      return[dt.toLocaleDateString('en-NG'),r.agent,r.schoolId,r.amount,r.paid?'Paid':'Pending'];
-    })].map(r=>r.join(',')).join('\n');
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-    a.download=`ledger-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    log('📥 Ledger exported');
-  }).catch(()=>alert('Export failed.'));
-}
-
-// ── Opportunities ──────────────────────────────────────────────────────────
-async function renderOpps(){
-  let opps=[];
-  try{opps=(await db.collection('admin_opportunities').get()).docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  $('opp-body').innerHTML=opps.length===0
-    ?'<tr><td colspan="5" style="text-align:center;color:var(--sub);padding:2rem;">No opportunities yet.</td></tr>'
-    :opps.map(o=>`<tr>
-        <td>${esc(o.title)}</td><td>${esc(o.provider)}</td>
-        <td><span class="chip ca" style="position:static;">${o.type}</span></td>
-        <td style="font-size:0.75rem;">${o.deadline||'—'}</td>
-        <td><button class="btn-d btn-sm" onclick="deleteOpp('${o.id}')">🗑️</button></td>
-      </tr>`).join('');
-}
-
-async function saveOpp(){
-  const title=$('opp-title').value.trim();
-  const provider=$('opp-provider').value.trim();
-  const deadline=$('opp-deadline').value;
-  if(!title||!provider||!deadline)return alert('Title, provider and deadline required.');
-  SQ.push({t:'addOpp',d:{title,provider,type:$('opp-type').value,amount:$('opp-amount').value,deadline,eligibility:$('opp-elig').value,url:$('opp-url').value,createdAt:new Date()}});
-  closeM('add-opp-modal');
-  ['opp-title','opp-provider','opp-amount','opp-url','opp-elig'].forEach(id=>$(id).value='');
-  $('opp-deadline').value='';
-  await new Promise(r=>setTimeout(r,500));
-  renderOpps();
-  log(`🔍 Added opportunity: ${title}`);
-}
-
-async function deleteOpp(id){
-  if(!confirm('Delete this opportunity?'))return;
-  SQ.push({t:'deleteOpp',id});
-  await new Promise(r=>setTimeout(r,400));
-  renderOpps();
-}
-
-// ── Settings ───────────────────────────────────────────────────────────────
-async function loadSettings(){
-  try{
-    const doc=await db.collection('admin_settings').doc('main').get();
-    if(doc.exists){
-      const d=doc.data();
-      $('s-adminpwd').value='';
-      $('s-schoolpwd').value=d.defaultSchoolPassword||'bloom2026';
-      $('s-cac').value=d.autoCAC||'full';
-      if(d.whatsappTemplate)$('s-tpl').value=d.whatsappTemplate;
-    }
-  }catch(e){}
-}
-
-async function saveSettings(){
-  const pwd=$('s-adminpwd').value.trim();
-  if(pwd&&pwd.length<4)return alert('Admin password must be at least 4 characters.');
-  SQ.push({t:'saveSettings',d:{...(pwd?{adminPassword:pwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
-  alert('✅ Settings saved!');
-  log('⚙️ Settings updated');
-}
-
-// ── PRODUCTION RESET ───────────────────────────────────────────────────────
-// Wipes ALL test/demo data. Keeps: Settings, CAC balance, Agents.
-// Use this once before going live with real schools.
-async function productionReset(){
-  if(!db||!navigator.onLine){alert('Must be online to reset.');return;}
-
-  // Step 1: Show what will be deleted
-  let dealCount=0,schoolCount=0,ledgerCount=0,actCount=0;
-  try{
-    dealCount=(await db.collection('admin_deals').get()).size;
-    schoolCount=(await db.collection('admin_approved_schools').get()).size;
-    ledgerCount=(await db.collection('admin_ledger').get()).size;
-    actCount=(await db.collection('admin_activity').get()).size;
-  }catch(e){alert('Could not read data counts: '+(e.message||e));return;}
-
-  const confirmed=confirm(
-    `⚠️ PRODUCTION RESET\n\nThis will permanently delete ALL test data:\n\n`+
-    `• ${dealCount} deal records (pending + rejected + approved)\n`+
-    `• ${schoolCount} approved school records\n`+
-    `• ${ledgerCount} commission ledger entries\n`+
-    `• ${actCount} activity log entries\n`+
-    `• All school portal documents in Firestore\n\n`+
-    `KEPT: Your settings, agents list, and CAC fund balance.\n\n`+
-    `This is for wiping test data before real sales begin. It CANNOT be undone.\n\nProceed?`
-  );
-  if(!confirmed)return;
-
-  const typed=prompt('Type  RESET  (in capitals) to confirm:');
-  if(typed!=='RESET'){alert('Cancelled — nothing was deleted.');return;}
-
-  const btn=document.getElementById('prod-reset-btn');
-  if(btn){btn.textContent='Wiping...';btn.disabled=true;}
-
-  try{
-    // Get all school IDs before deleting the list
-    const schoolSnap=await db.collection('admin_approved_schools').get();
-    const schoolIds=schoolSnap.docs.map(d=>d.data().schoolId).filter(Boolean);
-
-    // Delete in batches (Firestore batch max = 500 ops)
-    const batchDelete=async(col)=>{
-      const snap=await db.collection(col).get();
-      const batches=[];
-      let b=db.batch();let count=0;
-      snap.docs.forEach(d=>{b.delete(d.ref);count++;if(count===499){batches.push(b);b=db.batch();count=0;}});
-      if(count>0)batches.push(b);
-      await Promise.all(batches.map(x=>x.commit()));
-    };
-
-    await batchDelete('admin_deals');
-    await batchDelete('admin_approved_schools');
-    await batchDelete('admin_ledger');
-    await batchDelete('admin_activity');
-
-    // Delete all school portal documents
-    for(const sid of schoolIds){
-      await db.collection('schools').doc(sid).delete().catch(()=>{});
-    }
-
-    // Reset local storage cache
-    localStorage.removeItem('ad_sq');
-    localStorage.removeItem('ad_act');
-
-    alert(
-      `✅ PRODUCTION RESET COMPLETE\n\n`+
-      `Deleted:\n`+
-      `• ${dealCount} deals\n`+
-      `• ${schoolCount} schools\n`+
-      `• ${ledgerCount} ledger entries\n`+
-      `• ${actCount} activity entries\n`+
-      `• ${schoolIds.length} school portal documents\n\n`+
-      `Your settings, agents, and CAC balance are untouched.\n\n`+
-      `You are ready for real sales.`
-    );
-    renderDashboard();
-    renderApproved();
-  }catch(e){
-    alert('Reset failed partway through: '+(e.message||e)+'\n\nSome data may have been deleted. Reload the page and check.');
-  }finally{
-    if(btn){btn.textContent='🧹 Wipe All Test Data';btn.disabled=false;}
-  }
-}
-
-async function exportAll(){
-  try{
-    const[agents,deals,schools,ledger,opps,cac]=await Promise.all([
-      db.collection('admin_agents').get().then(s=>s.docs.map(d=>d.data())),
-      db.collection('admin_deals').get().then(s=>s.docs.map(d=>d.data())),
-      db.collection('admin_approved_schools').get().then(s=>s.docs.map(d=>d.data())),
-      db.collection('admin_ledger').get().then(s=>s.docs.map(d=>d.data())),
-      db.collection('admin_opportunities').get().then(s=>s.docs.map(d=>d.data())),
-      db.collection('admin_cac').doc('progress').get().then(d=>d.data())
-    ]);
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob([JSON.stringify({agents,deals,schools,ledger,opps,cac,at:new Date()},null,2)],{type:'application/json'}));
-    a.download=`aarinat-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    log('📥 Full backup exported');
-  }catch(e){alert('Export failed. Check connection.');}
-}
-
-async function clearAll(){
-  if(!confirm('Delete EVERYTHING including settings, agents and CAC balance?'))return;
-  if(prompt('Type DELETE to confirm:')!=='DELETE')return alert('Cancelled.');
-  for(const col of['admin_agents','admin_deals','admin_approved_schools','admin_ledger','admin_opportunities','admin_activity']){
-    const s=await db.collection(col).get();const b=db.batch();s.docs.forEach(d=>b.delete(d.ref));await b.commit();
-  }
-  await db.collection('admin_settings').doc('main').delete().catch(()=>{});
-  await db.collection('admin_cac').doc('progress').delete().catch(()=>{});
-  localStorage.removeItem('ad_sq');localStorage.removeItem('ad_act');
-  alert('All data cleared.');
-  location.reload();
-}
-
-// ── Boot ───────────────────────────────────────────────────────────────────
+// ── Startup ────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
   SQ.ping();
-  const authRaw=localStorage.getItem('ad_auth');
-  const authTime=parseInt(localStorage.getItem('ad_auth_time')||'0');
-  const EIGHT_HOURS=8*60*60*1000;
-  const sessionValid=authRaw==='1'&&(Date.now()-authTime)<EIGHT_HOURS;
-  if(sessionValid){
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    initAdmin();
-  }else if(authRaw){
-    localStorage.removeItem('ad_auth');
-    localStorage.removeItem('ad_auth_time');
+  checkDeepLink();
+  // ✅ Try cached session — works offline after first login
+  const saved=localStorage.getItem('ag_agent');
+  if(saved){
+    try{
+      agent=JSON.parse(saved);
+      if(agent && agent.id && agent.name){
+        startApp();
+        // Refresh from Firestore silently in background
+        if(navigator.onLine && db){
+          const p = normalizePhone(agent.phone||'');
+          const l = p.startsWith('234') ? '0'+p.slice(3) : p;
+          refreshAgentBackground(agent.id, p, l).catch(()=>{});
+        }
+        return;
+      }
+    }catch(e){ localStorage.removeItem('ag_agent'); }
   }
+  $('login').style.display='flex';
+  $('app').style.display='none';
+  setTab('phone');
 });
-
-async function loadAlerts(){
-  try{
-    const snap=await db.collection('admin_alerts').where('resolved','==',false).get();
-    const count=snap.size;
-    const badge=document.getElementById('alert-badge');
-    if(badge){badge.textContent=count>0?count:'';badge.style.display=count>0?'inline-flex':'none';}
-  }catch(e){}
-}
