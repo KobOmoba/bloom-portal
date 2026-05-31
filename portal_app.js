@@ -535,7 +535,7 @@ function normalizePhone(raw){
 }
 
 // ── Update this to your actual agent app URL ───────────────────────────────
-const AGENT_APP_URL = 'https://portal.edubloom.com.ng'; // ← update this
+const AGENT_APP_URL = 'https://agent.edubloom.com.ng'; // ← update this
 
 async function saveAgent(){
   const name=$('ag-name').value.trim();
