@@ -3,273 +3,187 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#050d18">
-<title>AariNAT Command Center</title>
+<meta name="theme-color" content="#080f1a">
+<title>Educational Bloom · Agent</title>
 <link rel="stylesheet" href="style.css">
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192x192.png">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#7c3aed">
+  <link rel="apple-touch-icon" href="icon-192x192.png">
 </head>
 <body>
 
 <!-- LOGIN -->
-<div id="login-screen" class="login-screen">
-  <div class="lbox">
-    <div class="lbox-logo">🎛️ AariNAT Command Center</div>
-    <div class="lbox-sub">Educational Bloom™ Admin Panel</div>
-    <label>Admin Password</label>
-    <input type="password" id="l-pwd" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')doLogin()">
-    <button id="l-btn" class="btn-b" onclick="doLogin()">🔓 Enter</button>
-    <div id="l-err" class="err"></div>
-    <p style="font-size:0.72rem;color:var(--sub);text-align:center;margin-top:0.75rem;">Forgot password? Update it in ⚙️ Settings after logging in.</p>
-  </div>
-</div>
+<div id="login" class="login" style="display:flex;">
+  <div class="login-box">
+    <div class="login-logo">🌸 Bloom Agent</div>
+    <div class="login-sub">Educational Bloom™ by AariNAT Company</div>
+    <div class="login-tabs">
+      <button class="ltab on" onclick="setTab('phone')">Login</button>
+      <button class="ltab" onclick="setTab('register')">New Agent?</button>
+    </div>
+    <div id="phone-form">
+      <label>Your WhatsApp Number</label>
+      <input type="tel" id="l-phone" placeholder="e.g. 2348012345678" onkeydown="if(event.key==='Enter')doLogin()">
+      <button id="l-btn" class="btn-brand" onclick="doLogin()">▶ Login</button>
+    </div>
+    <div id="register-form" style="display:none;">
+      <p style="font-size:0.85rem;color:var(--sub);padding:1rem;background:#0a1525;border-radius:10px;line-height:1.6;">
+        Agent accounts are created by AariNAT admin.<br><br>
+        📞 Call or WhatsApp Bayo:<br>
+        <strong style="color:var(--text);">+234 816 543 8265</strong><br><br>
+        Once registered, come back and login with your phone number.
+      </p>
+      <a href="https://wa.me/2348165438265?text=I%20want%20to%20become%20an%20Educational%20Bloom%20agent" target="_blank" style="text-decoration:none;">
+        <button class="btn-money">💬 WhatsApp AariNAT to Register</button>
+      </a>
+    </div>
+    <div id="login-err" class="err-box"></div>
+  </div><!-- /.login-box -->
+</div><!-- /#login — ✅ these two closing tags were missing, causing app to hide inside login -->
 
-<!-- MAIN APP -->
-<div id="main-app" style="display:none;">
-
+<!-- APP -->
+<div id="app" style="display:none;">
   <header class="hdr">
     <div>
-      <h1>🎛️ Command Center</h1>
-      <div class="hdr-sub">AariNAT Company Limited</div>
+      <div class="hdr-title">🌸 Bloom Agent</div>
+      <div class="hdr-sub" id="agent-name-hdr">—</div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;">
-      <span id="sync" class="sdot sdot-off">● Offline</span>
-      <button class="btn-sm btn-ghost" onclick="logout()" style="color:white;">Logout</button>
+      <span id="sync" class="dot dot-off">● Offline</span>
+      <button class="btn-sm btn-ghost" onclick="logout()">Logout</button>
     </div>
   </header>
 
-  <div class="cac">
-    <div class="cac-t">💰 CAC Reactivation Fund</div>
-    <div class="cac-bar"><div id="cac-fill" class="cac-fill" style="width:0%;"></div></div>
-    <div class="cac-row">
-      <span>Raised: <strong id="cac-raised">₦0</strong></span>
-      <span>Target: ₦250,000</span>
-      <span>Left: <strong id="cac-left">₦250,000</strong></span>
-    </div>
-  </div>
-  <div class="cac-in">
-    <input type="number" id="cac-amt" placeholder="Amount (₦)" min="0">
-    <input type="text" id="cac-note" placeholder="Note (e.g. Cash from Bayo)">
-    <button onclick="addCAC()">➕ Record</button>
-  </div>
-
-  <nav class="nav">
-    <button class="on" data-t="dashboard" onclick="go('dashboard')">📊 Dashboard</button>
-    <button data-t="pending" onclick="go('pending')">🔄 Pending <span id="pending-badge" class="nb">0</span></button>
-    <button data-t="approved" onclick="go('approved')">✅ Approved</button>
-    <button data-t="agents" onclick="go('agents')">👥 Agents</button>
-    <button data-t="ledger" onclick="go('ledger')">💰 Ledger</button>
-    <button data-t="opps" onclick="go('opps')">🔍 Opportunities</button>
-    <button data-t="settings" onclick="go('settings')">⚙️ Settings</button>
-  </nav>
-
   <main class="wrap">
 
-    <!-- DASHBOARD -->
-    <section id="sec-dashboard" class="sec on">
-      <div class="grid4">
-        <div class="stat"><div class="sn" id="d-pending">0</div><div class="sl">Pending</div></div>
-        <div class="stat"><div class="sn" id="d-approved">0</div><div class="sl">Approved</div></div>
-        <div class="stat"><div class="sn" id="d-agents">0</div><div class="sl">Agents</div></div>
-        <div class="stat"><div class="sn" id="d-commission" style="font-size:1.1rem;">₦0</div><div class="sl">Commission</div></div>
-      </div>
+    <!-- SUBMIT -->
+    <section id="sec-submit" class="sec on">
       <div class="card">
-        <div class="ct">⚡ Quick Actions</div>
-        <div class="grid2">
-          <button class="btn-b" onclick="go('pending')">📋 View Pending</button>
-          <button class="btn-ghost" style="color:var(--text);" onclick="exportAll()">📥 Export Backup</button>
-          <button class="btn-ghost" style="color:var(--text);" onclick="go('agents')">👥 Add Agent</button>
-          <button class="btn-ghost" style="color:var(--text);" onclick="go('ledger')">💰 Pay Commission</button>
+        <div class="card-title">📝 Submit a School Deal</div>
+        <p style="font-size:0.82rem;color:var(--sub);margin-bottom:1rem;">Fill in the school details. Bayo reviews and approves. You earn on approval.</p>
+        <label>School Name</label>
+        <input type="text" id="s-name" placeholder="e.g. Bright Stars Academy">
+        <label>Principal's WhatsApp</label>
+        <input type="tel" id="s-phone" placeholder="2348012345678">
+        <label>Principal's Email (optional)</label>
+        <input type="email" id="s-email" placeholder="principal@school.edu.ng">
+        <!-- CSV REGISTER COUNTER -->
+        <div style="background:#0a1525;border:1px solid var(--border);border-radius:10px;padding:0.85rem;margin-bottom:0.7rem;">
+          <div style="font-weight:700;font-size:0.82rem;color:var(--text);margin-bottom:0.4rem;">📂 Count from School Register CSV</div>
+          <p style="font-size:0.75rem;color:var(--sub);margin-bottom:0.6rem;">Upload the school's student list — system counts automatically, calculates fee, shows breakdown you can show the principal.</p>
+          <input type="file" id="register-csv" accept=".csv,.txt,.jpg,.jpeg,.png,.webp" style="display:none;" onchange="handleRegisterCSV(event)">
+          <button class="btn-brand btn-small" onclick="document.getElementById('register-csv').click()" style="display:inline-block;width:auto;padding:0.45rem 1rem;font-size:0.8rem;margin:0;">📁 Upload Register (Photo, CSV or Text)</button>
+          <span style="font-size:0.72rem;color:var(--sub);margin-left:8px;">Accepts CSV or plain text list. One student per line.</span>
+          <div id="csv-count-result" style="display:none;margin-top:0.75rem;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:9px;padding:0.75rem;">
+            <div id="csv-loading" style="display:none;text-align:center;padding:0.65rem;color:#34d399;font-size:0.83rem;font-weight:700;"></div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+              <span style="font-size:0.75rem;color:var(--sub);">Students in CSV</span>
+              <strong id="csv-student-count" style="font-size:1.3rem;color:#34d399;font-family:monospace;">0</strong>
+            </div>
+            <div style="font-size:0.78rem;margin-bottom:0.25rem;">Tier: <strong id="csv-tier-name" style="color:var(--text);">—</strong></div>
+            <div style="font-size:0.78rem;margin-bottom:0.25rem;">School pays: <strong id="csv-school-pays" style="color:#34d399;">₦0/term</strong></div>
+            <div style="font-size:0.78rem;margin-bottom:0.5rem;">Your commission (20%): <strong id="csv-your-comm" style="color:#fbbf24;">₦0</strong></div>
+            <div id="csv-class-breakdown" style="font-size:0.73rem;color:var(--sub);border-top:1px solid rgba(255,255,255,0.08);padding-top:0.4rem;margin-bottom:0.5rem;"></div>
+            <div id="csv-name-preview" style="font-size:0.73rem;color:var(--sub);margin-bottom:0.5rem;line-height:1.6;"></div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+              <button class="btn-money btn-small" onclick="useCSVCount()" style="display:inline-block;width:auto;padding:0.45rem 1rem;font-size:0.8rem;margin:0;">✅ Use This Count</button>
+              <button class="btn-ghost btn-small" onclick="resetCSVCount()" style="display:inline-block;width:auto;padding:0.45rem 1rem;font-size:0.8rem;margin:0;color:white;">🔄 Reset / Upload Again</button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="card">
-        <div class="ct">📈 Recent Activity</div>
-        <div id="activity-feed" style="font-size:0.82rem;color:var(--sub);"><em>Loading...</em></div>
-      </div>
-    </section>
 
-    <!-- PENDING -->
-    <section id="sec-pending" class="sec">
-      <div class="card">
-        <div class="ct">🔄 Pending Deals</div>
-        <p style="font-size:0.8rem;color:var(--sub);margin-bottom:0.75rem;">Approve to create the school account and send credentials via WhatsApp. Delete to permanently remove a test or wrong deal.</p>
-        <div id="pending-list"><p style="text-align:center;color:var(--sub);padding:2rem;">Listening for deals...</p></div>
-      </div>
-    </section>
-
-    <!-- APPROVED -->
-    <section id="sec-approved" class="sec">
-      <div class="card">
-        <div class="ct">✅ Approved Schools</div>
-        <input type="text" id="search-approved" placeholder="Search school name or ID..." oninput="renderApproved()" style="margin-bottom:0.75rem;">
-        <div id="approved-list"><p style="text-align:center;color:var(--sub);padding:2rem;">⏳ Loading...</p></div>
-        <button class="btn-warning" style="margin-top:0.75rem;" onclick="repairSchool()">🔧 Fix School Login (Repair Account)</button>
-      </div>
-    </section>
-
-    <!-- AGENTS -->
-    <section id="sec-agents" class="sec">
-      <div class="card">
-        <div class="ct">👥 Agents</div>
-        <button class="btn-b" style="width:auto;margin-bottom:0.75rem;" onclick="openM('add-agent-modal')">➕ Add Agent</button>
-        <div id="agents-list"><p style="text-align:center;color:var(--sub);padding:2rem;">⏳ Loading agents...</p></div>
-      </div>
-      <div class="card">
-        <div class="ct">📊 Performance</div>
-        <div class="twrap">
-          <table>
-            <thead><tr><th>Agent</th><th>Phone</th><th>Deals</th><th>Commission</th><th>Status</th></tr></thead>
-            <tbody id="agent-perf-body"></tbody>
-          </table>
+        <label>Number of Students (type or upload CSV above)</label>
+        <input type="number" id="s-count" placeholder="e.g. 85 — or upload CSV above to count automatically" oninput="autoTier()">
+        <label>Select Pricing Tier</label>
+        <div class="tiers">
+          <div class="tier" onclick="selectTier(this,10000,'Starter (1–50)',50)"><div class="tier-range">1–50 students</div><div class="tier-price">₦10,000</div><div class="tier-range">per term</div></div>
+          <div class="tier" onclick="selectTier(this,20000,'Small (51–100)',100)"><div class="tier-range">51–100 students</div><div class="tier-price">₦20,000</div><div class="tier-range">per term</div></div>
+          <div class="tier" onclick="selectTier(this,35000,'Medium (101–200)',200)"><div class="tier-range">101–200 students</div><div class="tier-price">₦35,000</div><div class="tier-range">per term</div></div>
+          <div class="tier" onclick="selectTier(this,55000,'Large (201–350)',350)"><div class="tier-range">201–350 students</div><div class="tier-price">₦55,000</div><div class="tier-range">per term</div></div>
+          <div class="tier" style="grid-column:1/-1;" onclick="selectTier(this,75000,'Enterprise (351+)',9999)"><div class="tier-range">351+ students</div><div class="tier-price">₦75,000</div><div class="tier-range">per term</div></div>
         </div>
-      </div>
-    </section>
-
-    <!-- LEDGER -->
-    <section id="sec-ledger" class="sec">
-      <div class="card">
-        <div class="ct">💰 Commission Ledger</div>
-        <div class="twrap">
-          <table>
-            <thead><tr><th>Date</th><th>Agent</th><th>School</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
-            <tbody id="ledger-body"></tbody>
-          </table>
+        <div id="comm-box" class="comm-box" style="display:none;">
+          <div class="comm-lbl">Your Commission (20%)</div>
+          <div class="comm-amt" id="comm-amt">₦0</div>
+          <div class="comm-lbl" id="comm-total" style="margin-top:4px;"></div>
+          <div class="comm-lbl" style="margin-top:4px;color:#34d399;">+ 5% residual every renewal term</div>
         </div>
-        <button class="btn-ghost" style="color:var(--text);margin-top:0.5rem;" onclick="exportLedger()">📥 Export CSV</button>
-      </div>
-    </section>
-
-    <!-- OPPORTUNITIES -->
-    <section id="sec-opps" class="sec">
-      <div class="card">
-        <div class="ct">🔍 Student Opportunities</div>
-        <p style="font-size:0.8rem;color:var(--sub);margin-bottom:0.75rem;">These appear in schools' portals under the Opportunities section.</p>
-        <button class="btn-b" style="width:auto;margin-bottom:0.75rem;" onclick="openM('add-opp-modal')">➕ Add Opportunity</button>
-        <div class="twrap">
-          <table>
-            <thead><tr><th>Title</th><th>Provider</th><th>Type</th><th>Deadline</th><th></th></tr></thead>
-            <tbody id="opp-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- SETTINGS -->
-    <section id="sec-settings" class="sec">
-      <div class="card">
-        <div class="ct">⚙️ Settings</div>
-        <label>Admin Password (leave blank to keep current)</label>
-        <input type="text" id="s-adminpwd" placeholder="New admin password (min 4 chars)">
-        <label>Default School First-Time Password</label>
-        <input type="text" id="s-schoolpwd" value="bloom2026">
-        <label>CAC Auto-Allocation</label>
-        <select id="s-cac">
-          <option value="full">Add full agent commission to CAC fund</option>
-          <option value="half">Add 50% of commission to CAC</option>
-          <option value="none">Manual CAC only</option>
+        <label>Number of Terms Paying</label>
+        <select id="s-terms" onchange="updateCommission()">
+          <option value="1">1 Term</option>
+          <option value="2">2 Terms</option>
+          <option value="3">3 Terms (Full Year)</option>
         </select>
-        <label>WhatsApp Approval Message Template</label>
-        <textarea id="s-tpl" rows="8" placeholder="Use {{schoolId}} and {{password}} as placeholders"></textarea>
-        <button class="btn-b" onclick="saveSettings()">💾 Save Settings</button>
-      </div>
-
-      <!-- PRODUCTION RESET — separate card, red zone -->
-      <div class="card" style="border:1.5px solid rgba(220,38,38,0.4);">
-        <div class="ct" style="color:#f87171;">🧹 Production Reset</div>
-        <p style="font-size:0.82rem;color:var(--sub);margin-bottom:0.4rem;">Use this <strong style="color:var(--text);">once</strong> before going live with real schools. Wipes all test deals, fake approved schools, commission entries, and activity logs.</p>
-        <p style="font-size:0.78rem;color:#fbbf24;margin-bottom:0.75rem;">⚠️ Your settings, agents list, and CAC fund balance are NOT deleted.</p>
-        <button id="prod-reset-btn" class="btn-d" onclick="productionReset()">🧹 Wipe All Test Data — Start Fresh</button>
+        <label>Notes for Bayo (optional)</label>
+        <textarea id="s-notes" rows="2" placeholder="e.g. Met at NAPPS conference, very interested, has 80 students"></textarea>
+        <button id="submit-btn" class="btn-brand" onclick="submitDeal()">📤 Submit to Bayo</button>
+        <div id="submit-fb" class="feedback"></div>
       </div>
 
       <div class="card">
-        <div class="ct">🗄️ Data Management</div>
-        <div class="grid2">
-          <button class="btn-b" onclick="exportAll()">📥 Export All</button>
-          <button class="btn-d" onclick="clearAll()">🗑️ Clear Everything</button>
+        <div class="card-title">💡 3-Minute Demo Script</div>
+        <div style="font-size:0.82rem;color:var(--sub);line-height:1.7;">
+          <p><strong style="color:var(--text);">1. Open demo on phone:</strong> Show the red fee deficit banner — "This is exactly how much money is sitting in parents' pockets."</p>
+          <p style="margin-top:0.5rem;"><strong style="color:var(--text);">2. Tap "Send AI Reminders":</strong> "One tap. Every overdue parent gets a professional message."</p>
+          <p style="margin-top:0.5rem;"><strong style="color:var(--text);">3. Open Students tab:</strong> "Click any student — you see their fees, attendance, exam scores, and report card all in one place."</p>
+          <p style="margin-top:0.5rem;"><strong style="color:var(--text);">4. Enter sample CA/Exam scores:</strong> "Type the scores — the system grades them automatically and generates the report card."</p>
+          <p style="margin-top:0.5rem;"><strong style="color:var(--text);">5. Show pricing:</strong> "30 days free. Then ₦10,000 per term for a small school. Less than one day's feeding."</p>
         </div>
-        <p style="font-size:0.72rem;color:var(--sub);margin-top:0.5rem;">Clear Everything also wipes settings, agents and CAC balance. Use Production Reset instead if you want a clean sales start.</p>
+      </div>
+    </section>
+
+    <!-- MY DEALS -->
+    <section id="sec-deals" class="sec">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem;">
+        <div style="font-size:1rem;font-weight:700;">My Submitted Deals</div>
+        <button class="btn-sm btn-ghost" onclick="renderDeals()">🔄 Refresh</button>
+      </div>
+      <div id="deals-list"></div>
+    </section>
+
+    <!-- EARNINGS -->
+    <section id="sec-earnings" class="sec">
+      <div class="stats">
+        <div class="stat"><div class="stat-n" id="earn-total">₦0</div><div class="stat-l">Total Earned</div></div>
+        <div class="stat"><div class="stat-n" id="earn-paid">₦0</div><div class="stat-l">Paid Out</div></div>
+      </div>
+      <div class="stat" style="margin-bottom:0.75rem;">
+        <div class="stat-n" id="earn-pending" style="color:var(--warn);">₦0</div>
+        <div class="stat-l">Pending Payment</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Commission History</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>School ID</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody id="earn-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card" style="text-align:center;">
+        <div style="font-size:0.82rem;color:var(--sub);margin-bottom:0.75rem;">Questions about your commission?</div>
+        <a href="https://wa.me/2348165438265?text=Hello%20AariNAT%2C%20I%20have%20a%20question%20about%20my%20commission" target="_blank" style="text-decoration:none;">
+          <button class="btn-money">💬 Message AariNAT</button>
+        </a>
       </div>
     </section>
 
   </main>
-</div>
 
-<!-- MODALS -->
-<div class="modal" id="approve-modal">
-  <div class="mbox">
-    <div class="mhead"><h3>✅ Approve Deal</h3><button class="mclose" onclick="closeM('approve-modal')">×</button></div>
-    <div id="ap-preview" style="margin-bottom:1rem;"></div>
-    <div style="background:#080f1a;padding:0.9rem;border-radius:9px;border:1px solid var(--border);margin-bottom:1rem;">
-      <div style="font-size:0.68rem;color:var(--sub);margin-bottom:0.2rem;">GENERATED SCHOOL ID</div>
-      <div id="ap-id" style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;color:#60a5fa;">—</div>
-      <div style="font-size:0.68rem;color:var(--sub);margin:0.5rem 0 0.2rem;">FIRST-TIME PASSWORD</div>
-      <div id="ap-pwd" style="font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:700;">—</div>
-    </div>
-    <p style="font-size:0.78rem;color:var(--sub);margin-bottom:0.75rem;">This will create the school login, add them to approved schools, log the commission, and open WhatsApp with their credentials.</p>
-    <button class="btn-g" onclick="confirmApproval()">✅ Approve & Activate</button>
-    <button class="btn-ghost" style="color:white;margin-top:0.4rem;" onclick="closeM('approve-modal')">Cancel</button>
-  </div>
-</div>
-
-<div class="modal" id="add-agent-modal">
-  <div class="mbox">
-    <div class="mhead"><h3>➕ Add Agent</h3><button class="mclose" onclick="closeM('add-agent-modal')">×</button></div>
-    <label>Full Name</label><input type="text" id="ag-name" placeholder="e.g. Grace Okonkwo">
-    <label>WhatsApp Number</label><input type="tel" id="ag-phone" placeholder="08012345678">
-    <label>Commission Rate (%)</label><input type="number" id="ag-rate" value="20" min="0" max="100">
-    <button id="add-agent-btn" class="btn-b" onclick="saveAgent()">💾 Add Agent</button>
-  </div>
-</div>
-
-<div class="modal" id="edit-agent-modal">
-  <div class="mbox">
-    <div class="mhead"><h3>✏️ Edit Agent</h3><button class="mclose" onclick="closeM('edit-agent-modal')">×</button></div>
-    <input type="hidden" id="edit-ag-id">
-    <label>Full Name</label><input id="edit-ag-name" placeholder="Full Name">
-    <label>WhatsApp Number</label><input id="edit-ag-phone" placeholder="08012345678">
-    <label>Commission Rate (%)</label><input type="number" id="edit-ag-rate" value="20" min="0" max="100">
-    <button class="btn-b" id="edit-ag-btn" onclick="saveEditAgent()">💾 Save Changes</button>
-    <button class="btn-ghost" style="color:white;margin-top:0.4rem;" onclick="closeM('edit-agent-modal')">Cancel</button>
-  </div>
-</div>
-
-<div class="modal" id="edit-school-modal">
-  <div class="mbox">
-    <div class="mhead"><h3>✏️ Edit School</h3><button class="mclose" onclick="closeM('edit-school-modal')">×</button></div>
-    <input type="hidden" id="edit-sc-docid">
-    <input type="hidden" id="edit-sc-schoolid">
-    <label>School Name</label><input id="edit-sc-name" placeholder="School Name">
-    <label>Principal Phone</label><input id="edit-sc-phone" placeholder="08012345678">
-    <label>Principal Email</label><input id="edit-sc-email" placeholder="principal@school.edu.ng">
-    <label>Login Password</label><input id="edit-sc-pwd" placeholder="Password">
-    <label>Agent Name</label><input id="edit-sc-agent" placeholder="Agent Name">
-    <button class="btn-b" id="edit-sc-btn" onclick="saveEditSchool()">💾 Save Changes</button>
-    <button class="btn-ghost" style="color:white;margin-top:0.4rem;" onclick="closeM('edit-school-modal')">Cancel</button>
-  </div>
-</div>
-
-<div class="modal" id="add-opp-modal">
-  <div class="mbox">
-    <div class="mhead"><h3>➕ Add Opportunity</h3><button class="mclose" onclick="closeM('add-opp-modal')">×</button></div>
-    <label>Title</label><input type="text" id="opp-title" placeholder="e.g. PTDF Scholarship">
-    <label>Provider</label><input type="text" id="opp-provider" placeholder="e.g. PTDF">
-    <label>Type</label>
-    <select id="opp-type"><option value="scholarship">Scholarship</option><option value="grant">Grant</option><option value="internship">Internship</option><option value="competition">Competition</option></select>
-    <label>Amount/Value</label><input type="text" id="opp-amount" placeholder="e.g. Full Tuition">
-    <label>Deadline</label><input type="date" id="opp-deadline">
-    <label>Eligibility</label><textarea id="opp-elig" rows="2" placeholder="e.g. Nigerian citizen, SS3 student"></textarea>
-    <label>Application URL</label><input type="url" id="opp-url" placeholder="https://...">
-    <button class="btn-b" onclick="saveOpp()">💾 Add Opportunity</button>
-  </div>
+  <nav class="nav">
+    <button class="nlink on" data-tab="submit" onclick="go('submit')"><span>📝</span>Submit</button>
+    <button class="nlink" data-tab="deals" onclick="go('deals')"><span>📋</span>My Deals</button>
+    <button class="nlink" data-tab="earnings" onclick="go('earnings')"><span>💰</span>Earnings</button>
+  </nav>
 </div>
 
 <script src="app.js"></script>
-<script>
-  if('serviceWorker' in navigator){
-    window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
-  }
-</script>
+  <script>
+    if('serviceWorker' in navigator){
+      window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    }
+  </script>
 </body>
 </html>
