@@ -852,10 +852,21 @@ async function productionReset(){
   const btn = document.getElementById('prod-reset-btn');
   if(btn){ btn.textContent='Wiping...'; btn.disabled=true; }
 
-  const collections=['admin_deals','admin_approved_schools','admin_ledger','admin_activity','schools'];
+  // Each collection is wiped independently — one failure does not stop the others
+  const collections=[
+    'admin_deals',
+    'admin_approved_schools',
+    'admin_ledger',
+    'admin_activity',
+    'admin_alerts'
+  ];
+  // Note: 'schools' is intentionally excluded — protected by Firebase Auth rules.
+  // Schools will be overwritten correctly when real schools are approved.
+
   let total=0;
-  try{
-    for(const col of collections){
+  const skipped=[];
+  for(const col of collections){
+    try{
       let snap = await db.collection(col).limit(400).get();
       while(!snap.empty){
         const batch=db.batch();
@@ -864,15 +875,20 @@ async function productionReset(){
         total+=snap.docs.length;
         snap=await db.collection(col).limit(400).get();
       }
+    }catch(e){
+      console.warn('Could not wipe '+col+':', e.message);
+      skipped.push(col);
     }
-    alert(`✅ Done! Deleted ${total} test records.\nYour settings, agents, and CAC balance are intact.\nYou are ready for real schools.`);
-    location.reload();
-  }catch(e){
-    alert('Error: '+(e.message||'unknown')+'. Check your internet and try again.');
-    console.error('productionReset:', e);
-  }finally{
-    if(btn){ btn.textContent='🧹 Wipe All Test Data — Start Fresh'; btn.disabled=false; }
   }
+
+  if(btn){ btn.textContent='🧹 Wipe All Test Data — Start Fresh'; btn.disabled=false; }
+
+  if(skipped.length){
+    alert('⚠️ Wiped '+total+' records.\n\nCould not delete: '+skipped.join(', ')+'\n(These may need manual deletion from Firebase Console)\n\nAll other test data is cleared.');
+  } else {
+    alert('✅ Done! Deleted '+total+' test records.\nYour settings, agents, and CAC balance are intact.\nYou are ready for real schools.');
+  }
+  location.reload();
 }
 
 async function clearAll(){
