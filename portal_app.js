@@ -400,6 +400,7 @@ async function renderApproved(){
         <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>
         <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>
         <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>
+        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>
         <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>
         ${isPrem
           ? `<button onclick="setPlan('${s.schoolId}','basic')" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
@@ -620,6 +621,36 @@ function resendAgentActivation(agentId){
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
+
+// ── Record School Renewal — 10% commission to original agent ─────────────────
+async function recordRenewal(schoolId, schoolName, agentName, agentPhone, tierPrice){
+  const price = parseFloat(tierPrice)||0;
+  if(!price){ alert('Cannot calculate renewal — tier price missing. Edit the school record first.'); return; }
+  const commission = Math.round(price * 0.10);
+  const terms = parseInt(prompt(`Recording renewal for ${schoolName}\n\nTier fee: ₦${fmt(price)}/term\nAgent renewal commission (10%): ₦${fmt(commission)}\n\nHow many terms is the school renewing?`,'1'));
+  if(!terms||terms<1){ return; }
+  const totalComm = commission * terms;
+  if(!confirm(`✅ Confirm renewal:\n\n${schoolName}\n${terms} term(s) × ₦${fmt(price)} = ₦${fmt(price*terms)}\nAgent (${agentName}): ₦${fmt(totalComm)} (10%)\n\nLog this commission?`)) return;
+
+  const normalPhone = agentPhone.startsWith('234')?agentPhone:'234'+(agentPhone.startsWith('0')?agentPhone.slice(1):agentPhone);
+  const commEntry = {
+    dealId: schoolId+'_renewal_'+Date.now(),
+    schoolId, schoolName,
+    agent: agentName,
+    agentPhone: normalPhone,
+    amount: totalComm,
+    type: 'renewal',
+    terms,
+    tierPrice: price,
+    paid: false,
+    date: new Date()
+  };
+  SQ.push({t:'addLedger', id:schoolId+'_ren_'+Date.now(), d:commEntry});
+  log(`🔄 Renewal: ${schoolName} · ${terms} term(s) · ₦${fmt(totalComm)} commission → ${agentName}`);
+  alert(`✅ Renewal logged!\n${agentName} will receive ₦${fmt(totalComm)} within 7 days of payment confirmation.`);
+  renderLedger();
+}
+
 // ── Agent Edit / Delete ────────────────────────────────────────────────────
 async function deleteAgent(id, name){
   if(!confirm(`Remove agent "${name}"? This cannot be undone.`))return;
@@ -742,7 +773,7 @@ async function renderLedger(){
     const dt=e.date?.toDate?e.date.toDate():new Date();
     return`<tr>
       <td style="font-size:0.75rem;">${dt.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'2-digit'})}</td>
-      <td>${esc(e.agent)}</td>
+      <td>${esc(e.agent)}<br><span style="font-size:0.65rem;color:${e.type==='renewal'?'#a78bfa':'#34d399'}">${e.type==='renewal'?'🔄 Renewal 10%':'✨ New 20%'}</span></td>
       <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;">${e.schoolId||'—'}</td>
       <td style="color:var(--money);font-weight:700;">${fmt(e.amount)}</td>
       <td><span class="chip ${e.paid?'ca':'cp'}" style="position:static;">${e.paid?'Paid':'Pending'}</span></td>
