@@ -1,7 +1,13 @@
 // ── Firebase ───────────────────────────────────────────────────────────────
 const FB={apiKey:"AIzaSyCVEdunn3AZndDP5Rm1Z3Kv1e6G6W2mB_o",authDomain:"educationbloom-699ed.firebaseapp.com",projectId:"educationbloom-699ed",storageBucket:"educationbloom-699ed.firebasestorage.app",messagingSenderId:"33750392965",appId:"1:33750392965:web:2b3da887ede996ea8389ec"};
 let db=null;
-try{firebase.initializeApp(FB);db=firebase.firestore();}catch(e){console.warn('FB:',e);}
+try{
+  firebase.initializeApp(FB);
+  db=firebase.firestore();
+  db.enablePersistence({synchronizeTabs:true})
+    .then(()=>console.log('✅ Portal offline persistence enabled'))
+    .catch(err=>{ if(err.code!=='failed-precondition'&&err.code!=='unimplemented') console.warn('Persistence:',err.code); });
+}catch(e){console.warn('FB:',e);}
 
 // ── State ──────────────────────────────────────────────────────────────────
 let pendingUnsub=null;
@@ -553,11 +559,8 @@ async function saveAgent(){
 
   try{
     if(db&&navigator.onLine){
-      // Online: write directly to Firestore with 8s timeout
-      const writePromise=db.collection('admin_agents').add(agentData);
-      const timeoutPromise=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),8000));
-      const docRef=await Promise.race([writePromise,timeoutPromise]);
-      // Add to memory cache with real Firestore id
+      // Simple direct write — no artificial timeout
+      const docRef=await db.collection('admin_agents').add(agentData);
       _agentsCache=[..._agentsCache.filter(a=>!a.id.startsWith('pending_')),{id:docRef.id,...agentData}];
     } else {
       // Offline: queue it and add to memory cache with temp id
