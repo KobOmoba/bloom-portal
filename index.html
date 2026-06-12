@@ -173,6 +173,11 @@
         </select>
         <label>WhatsApp Approval Message Template</label>
         <textarea id="s-tpl" rows="8" placeholder="Use {{schoolId}} and {{password}} as placeholders"></textarea>
+        <label>Gemini API Key (for school OCR — from aistudio.google.com)</label>
+        <input type="text" id="s-gemini" placeholder="AQ.Ab8RN..." autocomplete="off">
+        <div style="font-size:0.72rem;color:var(--sub);margin-top:-8px;">
+          Powers handwriting recognition in the School Portal. Free tier from Google AI Studio.
+        </div>
         <button class="btn-b" onclick="saveSettings()">💾 Save Settings</button>
       </div>
       <div class="card" style="border:1.5px solid rgba(220,38,38,0.4);">
