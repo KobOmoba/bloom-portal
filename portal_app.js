@@ -84,31 +84,37 @@ async function log(msg){
 
 // ── Login ──────────────────────────────────────────────────────────────────
 async function doLogin(){
-  const pwd=$('l-pwd').value;
-  const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
-  let stored='aarinat2024';
-  try{
-    const doc=await db.collection('admin_settings').doc('main').get();
-    if(doc.exists && doc.data().adminPassword) stored=doc.data().adminPassword;
-  } catch(e){ console.warn('Firestore login check failed, using default:', e.message); }
-  // Also accept hardcoded master override in case Firestore is down
-  const MASTER='aarinat2024';
-  if(pwd!==stored && pwd!==MASTER){
-    const e=$('l-err');
-    e.innerHTML='Incorrect password.<br><small style="color:#94a3b8;">Default password is <strong style="color:#fff;">aarinat2024</strong> — change it in Settings after login.</small>';
-    e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;
+  const pwd = ($('l-pwd').value || '').trim();
+  const btn = $('l-btn');
+  btn.textContent = 'Checking...'; btn.disabled = true;
+
+  // Accepted passwords: hardcoded master OR one saved in localStorage settings
+  const MASTER = 'aarinat2024';
+  const localPwd = localStorage.getItem('ad_custom_pwd') || '';
+  const ok = (pwd === MASTER) || (localPwd && pwd === localPwd);
+
+  if (!ok) {
+    const e = $('l-err');
+    e.innerHTML = 'Wrong password. Default is <strong>aarinat2024</strong>';
+    e.style.display = 'block';
+    btn.textContent = '🔓 Enter'; btn.disabled = false;
+    return;
   }
-  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-  $('login-screen').style.display='none';
-  $('main-app').style.display='block';
+
+  // Auth passed — store session with NO expiry (clear old expired ones first)
+  localStorage.setItem('ad_auth', '1');
+  localStorage.setItem('ad_auth_time', Date.now().toString());
+
+  showApp();
+}
+
+function showApp(){
+  $('login-screen').style.display = 'none';
+  $('main-app').style.display = 'block';
   SQ.ping();
-  try {
-    await initAdmin();
-  } catch(e) {
-    console.warn('initAdmin error:', e);
-    // Show app anyway — just navigate to dashboard with empty state
-    go('dashboard');
-  }
+  go('dashboard');
+  // Load data in background — don't block UI
+  setTimeout(()=>{ try{ initAdmin(); }catch(e){ console.warn('initAdmin bg:', e); } }, 100);
 }
 
 function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');if(pendingUnsub)pendingUnsub();location.reload();}
@@ -1147,17 +1153,9 @@ async function clearAll(){
 document.addEventListener('DOMContentLoaded',()=>{
   SQ.ping();
   const authRaw = localStorage.getItem('ad_auth');
-  const authTime = parseInt(localStorage.getItem('ad_auth_time')||'0');
-  const EIGHT_HOURS = 8 * 60 * 60 * 1000;
-  const sessionValid = authRaw === '1' && (Date.now() - authTime) < EIGHT_HOURS;
-  if(sessionValid){
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    initAdmin();
-  } else if(authRaw){
-    // Session expired — clear and show login
-    localStorage.removeItem('ad_auth');
-    localStorage.removeItem('ad_auth_time');
+  // No expiry — session persists until manual logout
+  if(authRaw === '1'){
+    showApp();
   }
 });
 
