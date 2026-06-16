@@ -44,8 +44,9 @@ const SQ={
   },
   async exec(op){
     const t=op.t;
-    if(t==='updateDeal')     await db.collection('admin_deals').doc(op.id).update(op.d);
-    else if(t==='addSchoolRecord') await db.collection('admin_approved_schools').doc(op.id).set(op.d,{merge:true});
+    if(t==='updateDeal')          await db.collection('admin_deals').doc(op.id).update(op.d);
+    else if(t==='addSchoolRecord')   await db.collection('admin_approved_schools').doc(op.id).set(op.d,{merge:true});
+    else if(t==='updateSchoolRecord')await db.collection('admin_approved_schools').doc(op.id).update(op.d);
     else if(t==='createSchool')    await db.collection('schools').doc(op.id).set(op.d,{merge:true});
     else if(t==='addLedger')       await db.collection('admin_ledger').doc(op.id).set(op.d,{merge:true});
     else if(t==='updateCAC')       await db.collection('admin_cac').doc('progress').set(op.d,{merge:true});
@@ -175,12 +176,21 @@ async function openApproveModal(dealId){
   const sd=await db.collection('admin_settings').doc('main').get().catch(()=>null);
   const defPwd=sd?.exists?(sd.data().defaultSchoolPassword||'bloom2026'):'bloom2026';
   const schoolId=genId();
-  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;">
+  const scanned = deal.scannedStudents || [];
+  const scannedPreview = scanned.length
+    ? '<div style="margin-top:0.5rem;"><b>🤖 AI-Scanned Students (' + scanned.length + '):</b><div style="max-height:80px;overflow-y:auto;margin-top:4px;">' +
+      scanned.slice(0,10).map(s=>'<span style="display:inline-block;background:rgba(124,58,237,0.15);border-radius:4px;padding:1px 6px;margin:2px;font-size:0.72rem;color:#a78bfa;">' + esc(s.name||s) + '</span>').join('') +
+      (scanned.length > 10 ? '<span style="font-size:0.7rem;color:var(--sub);">...+' + (scanned.length-10) + ' more</span>' : '') +
+      '</div></div>'
+    : '<div style="margin-top:0.4rem;font-size:0.75rem;color:#f59e0b;">⚠️ No AI-scanned names — students will need manual entry.</div>';
+
+  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;line-height:1.8;">
     <div><b>School:</b> ${esc(deal.school?.name)}</div>
-    <div><b>Phone:</b> ${esc(deal.school?.phone)}</div>
-    <div><b>Students:</b> ${deal.school?.studentCount||0}</div>
+    <div><b>Principal WhatsApp:</b> ${esc(deal.school?.phone)}</div>
+    <div><b>Students:</b> ${deal.school?.studentCount||0} (agent reported)</div>
     <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>
-    <div><b>Agent:</b> ${esc(deal.agent?.name)}</div>
+    <div><b>Agent:</b> ${esc(deal.agent?.name)} · ${esc(deal.agent?.phone)}</div>
+    ${scannedPreview}
   </div>`;
   $('ap-id').textContent=schoolId;
   $('ap-pwd').textContent=defPwd;
@@ -196,7 +206,31 @@ async function confirmApproval(){
   // 1. Mark deal approved
   SQ.push({t:'updateDeal',id,d:{status:'approved',schoolId,approvedAt:new Date()}});
   // 2. Add to approved schools list
-  SQ.push({t:'addSchoolRecord',id:schoolId,d:{schoolId,schoolName:deal.school?.name,principalPhone:deal.school?.phone,principalEmail:deal.school?.email||'',password,tier:deal.tier?.name,tierPrice:deal.tier?.price,agentName:deal.agent?.name,agentPhone:deal.agent?.phone,approvedAt:new Date(),termsPaid:deal.terms||1}});
+  // Calculate payment expiry — each term = 3 months
+  const now = new Date();
+  const expiryDate = new Date(now);
+  expiryDate.setMonth(expiryDate.getMonth() + ((deal.terms||1) * 3));
+  SQ.push({t:'addSchoolRecord',id:schoolId,d:{
+    schoolId,
+    schoolName: deal.school?.name,
+    principalPhone: deal.school?.phone,
+    principalEmail: deal.school?.email||'',
+    password,
+    tier: deal.tier?.name,
+    tierPrice: deal.tier?.price,
+    agentName: deal.agent?.name,
+    agentPhone: deal.agent?.phone,
+    agentId: deal.agent?.id||'',
+    approvedAt: now,
+    termsPaid: deal.terms||1,
+    termsRemaining: deal.terms||1,
+    expiryDate: expiryDate,
+    paymentStatus: 'active',    // active | expired | suspended
+    studentCount: deal.school?.studentCount||0,
+    scannedCount: deal.scannedCount||0,
+    renewalReminderSent: false,
+    lastRenewalCheck: now
+  }});
   // 3. Create actual school account — DIRECT write so portal login works immediately
   const schoolDoc = {
     config:{
@@ -217,7 +251,15 @@ async function confirmApproval(){
       }
     },
     staff:[{name:'Principal',email:deal.school?.email||(schoolId.toLowerCase()+'@bloom.edu.ng'),password,role:'Principal',phone:deal.school?.phone||''}],
-    students:[],expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
+    students: (deal.scannedStudents||[]).map((s,i)=>({
+      id: 'S' + String(i+1).padStart(4,'0'),
+      name: s.name || s,
+      class: s.class || '',
+      fees: { paid: 0, balance: deal.tier?.price || 0, history: [] },
+      attendance: {},
+      scores: {}
+    })),
+    expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
     music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]
   };
   try {
@@ -252,6 +294,130 @@ async function confirmApproval(){
   renderApproved();
 }
 
+// ══════════════════════════════════════════════════════════
+// PAYMENT LIFECYCLE MONITOR
+// ══════════════════════════════════════════════════════════
+
+// Called from dashboard — checks all active schools for expiry
+async function checkPaymentHealth() {
+  try {
+    const snap = await db.collection('admin_approved_schools').get();
+    const now = new Date();
+    let expired=0, expiringSoon=0, active=0;
+
+    const updates = [];
+    snap.docs.forEach(doc => {
+      const s = doc.data();
+      if (!s.expiryDate) return;
+      const expiry = s.expiryDate.toDate ? s.expiryDate.toDate() : new Date(s.expiryDate);
+      const daysLeft = Math.ceil((expiry - now) / (1000*60*60*24));
+
+      if (daysLeft < 0) {
+        expired++;
+        updates.push({ id: doc.id, data: { paymentStatus: 'expired' } });
+      } else if (daysLeft <= 14) {
+        expiringSoon++;
+        updates.push({ id: doc.id, data: { paymentStatus: 'expiring_soon', daysLeft } });
+      } else {
+        active++;
+      }
+    });
+
+    // Batch update statuses
+    for (const u of updates) {
+      SQ.push({t:'updateSchoolRecord', id: u.id, d: u.data});
+    }
+
+    // Show summary banner
+    renderPaymentHealthBanner({ active, expiringSoon, expired });
+    await log(`💳 Payment check: ${active} active, ${expiringSoon} expiring soon, ${expired} expired`);
+  } catch(e) { console.warn('Payment health check failed:', e); }
+}
+
+function renderPaymentHealthBanner({active, expiringSoon, expired}) {
+  let el = document.getElementById('payment-health-banner');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'payment-health-banner';
+    el.style.cssText = 'padding:0.6rem 1rem;border-radius:10px;margin-bottom:0.75rem;font-size:0.82rem;';
+    const dash = document.getElementById('d-summary');
+    if (dash) dash.parentNode.insertBefore(el, dash);
+  }
+  const hasIssues = expiringSoon > 0 || expired > 0;
+  el.style.background = hasIssues ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)';
+  el.style.border = hasIssues ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(16,185,129,0.3)';
+  el.innerHTML = `
+    <div style="font-weight:700;margin-bottom:4px;">${hasIssues ? '⚠️ Payment Alert' : '✅ All Schools Current'}</div>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <span style="color:#22c55e;">✅ Active: <b>${active}</b></span>
+      ${expiringSoon ? `<span style="color:#f59e0b;">⏰ Expiring Soon: <b>${expiringSoon}</b></span>` : ''}
+      ${expired ? `<span style="color:#ef4444;">❌ Expired: <b>${expired}</b> <button onclick="viewExpiredSchools()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.75rem;">View</button></span>` : ''}
+    </div>`;
+}
+
+async function viewExpiredSchools() {
+  try {
+    const snap = await db.collection('admin_approved_schools')
+      .where('paymentStatus','==','expired').get();
+    if (snap.empty) { alert('No expired schools found.'); return; }
+    const schools = snap.docs.map(d => d.data());
+    const list = schools.map(s =>
+      `• ${s.schoolName} (${s.schoolId})
+  Agent: ${s.agentName} · ${s.agentPhone}
+  Principal: ${s.principalPhone}`
+    ).join('
+
+');
+    alert(`❌ EXPIRED SCHOOLS (${schools.length}):
+
+${list}
+
+Contact agents to collect renewal.`);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// Send renewal reminder via WhatsApp to agent (not principal — agent collects)
+function sendRenewalReminder(schoolId, schoolName, agentPhone, principalPhone, daysLeft) {
+  const agentMsg = encodeURIComponent(
+    `⏰ *EduBloom Renewal Alert*
+
+` +
+    `*${schoolName}* (${schoolId}) expires in *${daysLeft} day${daysLeft===1?'':'s'}*.
+
+` +
+    `Please collect the renewal fee and send payment confirmation to Bayo.
+
+` +
+    `Tier renewal → contact: wa.me/2348145073941`
+  );
+  window.open(`https://wa.me/${(agentPhone||'').replace(/\D/g,'')}?text=${agentMsg}`, '_blank');
+}
+
+// Mark a school as renewed — extend expiry by N terms
+async function renewSchool(schoolId, terms) {
+  terms = terms || parseInt(prompt('How many terms to renew?','1')) || 1;
+  if (!schoolId) return;
+  try {
+    const snap = await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
+    if (snap.empty) { alert('School not found.'); return; }
+    const doc = snap.docs[0];
+    const s = doc.data();
+    const currentExpiry = s.expiryDate?.toDate ? s.expiryDate.toDate() : new Date();
+    const newExpiry = new Date(currentExpiry);
+    newExpiry.setMonth(newExpiry.getMonth() + (terms * 3));
+    await db.collection('admin_approved_schools').doc(doc.id).update({
+      expiryDate: newExpiry,
+      paymentStatus: 'active',
+      termsPaid: (s.termsPaid||0) + terms,
+      renewedAt: new Date()
+    });
+    alert(`✅ ${s.schoolName} renewed for ${terms} term(s).
+New expiry: ${newExpiry.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'})}`);
+    await log(`💳 Renewed: ${schoolId} · ${terms} term(s) · new expiry ${newExpiry.toLocaleDateString()}`);
+    renderApproved();
+  } catch(e) { alert('Renewal failed: ' + e.message); }
+}
+
 // Repair: re-creates the school Firestore document for already-approved schools
 // Use this for schools approved before the direct-write fix
 async function repairSchool(schoolId) {
@@ -266,7 +432,15 @@ async function repairSchool(schoolId) {
     const schoolDoc = {
       config:{plan:'basic',fee:50000,schoolName:s.schoolName||'',principalEmail:s.principalEmail||'',whatsapp:s.principalPhone||'',createdAt:new Date().toISOString()},
       staff:[{name:'Principal',email:s.principalEmail||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:s.password,role:'Principal',phone:s.principalPhone||''}],
-      students:[],expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
+      students: (deal.scannedStudents||[]).map((s,i)=>({
+      id: 'S' + String(i+1).padStart(4,'0'),
+      name: s.name || s,
+      class: s.class || '',
+      fees: { paid: 0, balance: deal.tier?.price || 0, history: [] },
+      attendance: {},
+      scores: {}
+    })),
+    expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
       music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]
     };
     await db.collection('schools').doc(schoolId).set(schoolDoc,{merge:true});
@@ -381,9 +555,20 @@ async function renderApproved(){
     const tierMax=live.tierMax||TIERS.find(t=>(s.tierPrice||0)<=t.price)?.max||50;
     const newTier=live.tierExceededNewTier||{};
 
+    // Payment expiry
+    const expiry = s.expiryDate?.toDate ? s.expiryDate.toDate() : (s.expiryDate ? new Date(s.expiryDate) : null);
+    const daysLeft = expiry ? Math.ceil((expiry - new Date()) / (1000*60*60*24)) : null;
+    const payStatus = s.paymentStatus || 'active';
+    const expiryLabel = expiry ? expiry.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'}) : '—';
+    const payChip = payStatus === 'expired'
+      ? `<span class="chip" style="background:#dc2626;color:#fff;">❌ EXPIRED</span>`
+      : daysLeft !== null && daysLeft <= 14
+        ? `<span class="chip" style="background:#f59e0b;color:#fff;">⏰ ${daysLeft}d left</span>`
+        : `<span class="chip ca">✅ PAID</span>`;
+
     const statusChip = tierExceeded
-      ? `<span class="chip" style="background:#dc2626;color:#fff;">⚠️ OVER TIER</span>`
-      : `<span class="chip ca">ACTIVE</span>`;
+      ? `<span class="chip" style="background:#7c3aed;color:#fff;">⚠️ OVER TIER</span>`
+      : payChip;
     const planChip = isPrem
       ? `<span class="chip" style="background:#7c3aed;color:#fff;margin-left:4px;">⭐ PREMIUM</span>`
       : '';
@@ -401,6 +586,10 @@ async function renderApproved(){
       <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>
       <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>
       <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>
+      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">
+        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}
+        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}
+      </div>
       ${overAlert}
       <div class="dact" style="flex-wrap:wrap;gap:5px;">
         <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>
