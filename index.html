@@ -20,12 +20,13 @@
     <div class="lbox-logo">🎛️ AariNAT Command Center</div>
     <div class="lbox-sub">Educational Bloom™ Admin Panel</div>
     <label>Admin Password</label>
-    <div style="position:relative;display:flex;align-items:center;">
+    <div style="display:flex;align-items:center;gap:8px;width:100%;">
       <input type="password" id="l-pwd" placeholder="Enter admin password"
         onkeydown="if(event.key==='Enter')doLogin()"
-        style="width:100%;padding-right:44px;">
-      <button onclick="(function(){var i=document.getElementById('l-pwd');var b=document.getElementById('eye-btn');i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'👁️':'🙈';})()" id="eye-btn"
-        style="position:absolute;right:8px;background:none;border:none;font-size:1.2rem;cursor:pointer;padding:4px 6px;color:var(--sub);" title="Show/hide password">👁️</button>
+        style="flex:1;min-width:0;">
+      <button id="eye-btn" type="button"
+        onclick="(function(){var i=document.getElementById('l-pwd');var b=document.getElementById('eye-btn');i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'👁️':'🙈'; i.focus();})()"
+        style="flex-shrink:0;background:#1e293b;border:1.5px solid var(--border,#334155);border-radius:10px;font-size:1.2rem;cursor:pointer;padding:8px 10px;color:var(--sub);" title="Show/hide password">👁️</button>
     </div>
     <button id="l-btn" class="btn-b" onclick="doLogin()">🔓 Enter</button>
     <div id="l-err" class="err"></div>
