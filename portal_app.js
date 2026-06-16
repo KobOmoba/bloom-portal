@@ -157,18 +157,7 @@ function renderPendingList(deals){
   if(!deals.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">✅ No pending deals.</p>';return;}
   c.innerHTML=deals.map(d=>{
     const comm=Math.round((d.tier?.price||0)*((d.agent?.commission||20)/100)*(d.terms||1));
-    return`<div class="deal pend">
-      <span class="chip cp">PENDING</span>
-      <div class="dn">${esc(d.school?.name)}</div>
-      <div class="dm">Agent: ${esc(d.agent?.name)} · ${d.school?.studentCount||0} students</div>
-      <div class="dm">📱 ${esc(d.school?.phone)}</div>
-      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price)}/term · Your commission: ${fmt(comm)}</div>
-      ${d.notes?`<div class="dm" style="font-style:italic;margin-top:4px;">"${esc(d.notes)}"</div>`:''}
-      <div class="dact">
-        <button class="btn-g btn-sm" onclick="openApproveModal('${d.id}')">✅ Approve</button>
-        <button class="btn-d btn-sm" onclick="rejectDeal('${d.id}','${esc(d.school?.name)}')">❌ Reject</button>
-      </div>
-    </div>`;
+    return`<div class="deal pend">\n      <span class="chip cp">PENDING</span>\n      <div class="dn">${esc(d.school?.name)}</div>\n      <div class="dm">Agent: ${esc(d.agent?.name)} · ${d.school?.studentCount||0} students</div>\n      <div class="dm">📱 ${esc(d.school?.phone)}</div>\n      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price)}/term · Your commission: ${fmt(comm)}</div>\n      ${d.notes?`<div class="dm" style="font-style:italic;margin-top:4px;">"${esc(d.notes)}"</div>`:''}\n      <div class="dact">\n        <button class="btn-g btn-sm" onclick="openApproveModal('${d.id}')">✅ Approve</button>\n        <button class="btn-d btn-sm" onclick="rejectDeal('${d.id}','${esc(d.school?.name)}')">❌ Reject</button>\n      </div>\n    </div>`;
   }).join('');
 }
 
@@ -188,14 +177,7 @@ async function openApproveModal(dealId){
       '</div></div>'
     : '<div style="margin-top:0.4rem;font-size:0.75rem;color:#f59e0b;">⚠️ No AI-scanned names — students will need manual entry.</div>';
 
-  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;line-height:1.8;">
-    <div><b>School:</b> ${esc(deal.school?.name)}</div>
-    <div><b>Principal WhatsApp:</b> ${esc(deal.school?.phone)}</div>
-    <div><b>Students:</b> ${deal.school?.studentCount||0} (agent reported)</div>
-    <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>
-    <div><b>Agent:</b> ${esc(deal.agent?.name)} · ${esc(deal.agent?.phone)}</div>
-    ${scannedPreview}
-  </div>`;
+  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;line-height:1.8;">\n    <div><b>School:</b> ${esc(deal.school?.name)}</div>\n    <div><b>Principal WhatsApp:</b> ${esc(deal.school?.phone)}</div>\n    <div><b>Students:</b> ${deal.school?.studentCount||0} (agent reported)</div>\n    <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>\n    <div><b>Agent:</b> ${esc(deal.agent?.name)} · ${esc(deal.agent?.phone)}</div>\n    ${scannedPreview}\n  </div>`;
   $('ap-id').textContent=schoolId;
   $('ap-pwd').textContent=defPwd;
   approvalData={id:dealId,deal,schoolId,password:defPwd};
@@ -350,13 +332,7 @@ function renderPaymentHealthBanner({active, expiringSoon, expired}) {
   const hasIssues = expiringSoon > 0 || expired > 0;
   el.style.background = hasIssues ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)';
   el.style.border = hasIssues ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(16,185,129,0.3)';
-  el.innerHTML = `
-    <div style="font-weight:700;margin-bottom:4px;">${hasIssues ? '⚠️ Payment Alert' : '✅ All Schools Current'}</div>
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
-      <span style="color:#22c55e;">✅ Active: <b>${active}</b></span>
-      ${expiringSoon ? `<span style="color:#f59e0b;">⏰ Expiring Soon: <b>${expiringSoon}</b></span>` : ''}
-      ${expired ? `<span style="color:#ef4444;">❌ Expired: <b>${expired}</b> <button onclick="viewExpiredSchools()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.75rem;">View</button></span>` : ''}
-    </div>`;
+  el.innerHTML = `\n    <div style="font-weight:700;margin-bottom:4px;">${hasIssues ? '⚠️ Payment Alert' : '✅ All Schools Current'}</div>\n    <div style="display:flex;gap:1rem;flex-wrap:wrap;">\n      <span style="color:#22c55e;">✅ Active: <b>${active}</b></span>\n      ${expiringSoon ? `<span style="color:#f59e0b;">⏰ Expiring Soon: <b>${expiringSoon}</b></span>` : ''}\n      ${expired ? `<span style="color:#ef4444;">❌ Expired: <b>${expired}</b> <button onclick="viewExpiredSchools()" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:0.75rem;">View</button></span>` : ''}\n    </div>`;
 }
 
 async function viewExpiredSchools() {
@@ -366,32 +342,18 @@ async function viewExpiredSchools() {
     if (snap.empty) { alert('No expired schools found.'); return; }
     const schools = snap.docs.map(d => d.data());
     const list = schools.map(s =>
-      `• ${s.schoolName} (${s.schoolId})
-  Agent: ${s.agentName} · ${s.agentPhone}
-  Principal: ${s.principalPhone}`
-    ).join('
-
-');
-    alert(`❌ EXPIRED SCHOOLS (${schools.length}):
-
-${list}
-
-Contact agents to collect renewal.`);
+      '• ' + s.schoolName + ' (' + s.schoolId + ')\n  Agent: ' + s.agentName + ' · ' + s.agentPhone + '\n  Principal: ' + s.principalPhone
+    ).join('\n\n');
+    alert('❌ EXPIRED SCHOOLS (' + schools.length + '):\n\n' + list + '\n\nContact agents to collect renewal.');
   } catch(e) { alert('Error: ' + e.message); }
 }
 
 // Send renewal reminder via WhatsApp to agent (not principal — agent collects)
 function sendRenewalReminder(schoolId, schoolName, agentPhone, principalPhone, daysLeft) {
   const agentMsg = encodeURIComponent(
-    `⏰ *EduBloom Renewal Alert*
-
-` +
-    `*${schoolName}* (${schoolId}) expires in *${daysLeft} day${daysLeft===1?'':'s'}*.
-
-` +
-    `Please collect the renewal fee and send payment confirmation to Bayo.
-
-` +
+    `⏰ *EduBloom Renewal Alert*\n\n` +
+    `*${schoolName}* (${schoolId}) expires in *${daysLeft} day${daysLeft===1?'':'s'}*.\n\n` +
+    `Please collect the renewal fee and send payment confirmation to Bayo.\n\n` +
     `Tier renewal → contact: wa.me/2348145073941`
   );
   window.open(`https://wa.me/${(agentPhone||'').replace(/\D/g,'')}?text=${agentMsg}`, '_blank');
@@ -415,8 +377,7 @@ async function renewSchool(schoolId, terms) {
       termsPaid: (s.termsPaid||0) + terms,
       renewedAt: new Date()
     });
-    alert(`✅ ${s.schoolName} renewed for ${terms} term(s).
-New expiry: ${newExpiry.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'})}`);
+    alert(`✅ ${s.schoolName} renewed for ${terms} term(s).\nNew expiry: ${newExpiry.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'})}`);
     await log(`💳 Renewed: ${schoolId} · ${terms} term(s) · new expiry ${newExpiry.toLocaleDateString()}`);
     renderApproved();
   } catch(e) { alert('Renewal failed: ' + e.message); }
@@ -577,40 +538,15 @@ async function renderApproved(){
       ? `<span class="chip" style="background:#7c3aed;color:#fff;margin-left:4px;">⭐ PREMIUM</span>`
       : '';
     const overAlert = tierExceeded
-      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.4rem 0.6rem;font-size:0.74rem;color:#dc2626;margin-top:4px;">
-           ⚠️ ${count} students exceeds tier limit (${tierMax}). Needs upgrade to <b>${newTier.name||'?'}</b> — ₦${fmt(newTier.price||0)}/term
-         </div>` : '';
+      ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.4rem 0.6rem;font-size:0.74rem;color:#dc2626;margin-top:4px;">\n           ⚠️ ${count} students exceeds tier limit (${tierMax}). Needs upgrade to <b>${newTier.name||'?'}</b> — ₦${fmt(newTier.price||0)}/term\n         </div>` : '';
 
-    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">
-      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">
-        ${statusChip}${planChip}
-        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}
-      </div>
-      <div class="dn">${esc(s.schoolName)}</div>
-      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>
-      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>
-      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>
-      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">
-        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}
-        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}
-      </div>
-      ${overAlert}
-      <div class="dact" style="flex-wrap:wrap;gap:5px;">
-        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>
-        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>
-        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>
-        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>
-        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>
-        ${isPrem
+    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">\n      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">\n        ${statusChip}${planChip}\n        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}\n      </div>\n      <div class="dn">${esc(s.schoolName)}</div>\n      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>\n      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>\n      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>\n      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">\n        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}\n        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}\n      </div>\n      ${overAlert}\n      <div class="dact" style="flex-wrap:wrap;gap:5px;">\n        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>\n        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>\n        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>\n        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>\n        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>\n        ${isPrem
           ? `<button onclick="setPlan('${s.schoolId}','basic')" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
           : `<button onclick="setPlan('${s.schoolId}','premium')" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;">⭐ Activate Premium</button>`
-        }
-        ${tierExceeded
+        }\n        ${tierExceeded
           ? `<button onclick="unlockSchool('${s.schoolId}')" style="background:#dcfce7;border:1px solid #86efac;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:#16a34a;font-weight:700;">🔓 Unlock (paid)</button>`
           : ''
-        }
-      </div>
-    </div>`;
+        }\n      </div>\n    </div>`;
   }).join('');
 }
 
@@ -683,27 +619,12 @@ function renderAgentsFromData(agents, ledger, deals){
     :agents.map(a=>{
       const earned=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
       const paid=ledger.filter(l=>l.agent===a.name&&l.paid).reduce((s,l)=>s+(l.amount||0),0);
-      return`<div class="deal" style="border-left:3px solid var(--brand);">
-        <div class="dn">${esc(a.name)}</div>
-        <div class="dm">📱 ${a.phone} · Commission rate: ${a.commission||20}%</div>
-        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>
-        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">
-          <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>
-          <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>
-          <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>
-        </div>
-      </div>`;
+      return`<div class="deal" style="border-left:3px solid var(--brand);">\n        <div class="dn">${esc(a.name)}</div>\n        <div class="dm">📱 ${a.phone} · Commission rate: ${a.commission||20}%</div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">\n          <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>\n          <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>\n          <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>\n        </div>\n      </div>`;
     }).join('');
   $('agent-perf-body').innerHTML=agents.map(a=>{
     const d=deals.filter(x=>x.agent?.name===a.name).length;
     const comm=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
-    return`<tr>
-      <td>${esc(a.name)}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${a.phone}</td>
-      <td>${d}</td>
-      <td style="color:var(--money);font-weight:700;">${fmt(comm)}</td>
-      <td><span class="chip ca" style="position:static;">Active</span></td>
-    </tr>`;
+    return`<tr>\n      <td>${esc(a.name)}</td>\n      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${a.phone}</td>\n      <td>${d}</td>\n      <td style="color:var(--money);font-weight:700;">${fmt(comm)}</td>\n      <td><span class="chip ca" style="position:static;">Active</span></td>\n    </tr>`;
   }).join('');
 }
 
@@ -967,14 +888,7 @@ async function renderLedger(){
   try{entries=(await db.collection('admin_ledger').orderBy('date','desc').get()).docs.map(d=>({_id:d.id,...d.data()}));}catch(e){}
   $('ledger-body').innerHTML=entries.length===0?'<tr><td colspan="6" style="text-align:center;color:var(--sub);padding:2rem;">No entries yet.</td></tr>':entries.map(e=>{
     const dt=e.date?.toDate?e.date.toDate():new Date();
-    return`<tr>
-      <td style="font-size:0.75rem;">${dt.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'2-digit'})}</td>
-      <td>${esc(e.agent)}<br><span style="font-size:0.65rem;color:${e.type==='renewal'?'#a78bfa':'#34d399'}">${e.type==='renewal'?'🔄 Renewal 10%':'✨ New 20%'}</span></td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;">${e.schoolId||'—'}</td>
-      <td style="color:var(--money);font-weight:700;">${fmt(e.amount)}</td>
-      <td><span class="chip ${e.paid?'ca':'cp'}" style="position:static;">${e.paid?'Paid':'Pending'}</span></td>
-      <td>${e.paid?'<span style="font-size:0.72rem;color:var(--sub);">Done</span>':`<button class="btn-g btn-sm" onclick="markPaid('${e._id}','${esc(e.agent)}',${e.amount||0})">✅ Pay</button>`}</td>
-    </tr>`;
+    return`<tr>\n      <td style="font-size:0.75rem;">${dt.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'2-digit'})}</td>\n      <td>${esc(e.agent)}<br><span style="font-size:0.65rem;color:${e.type==='renewal'?'#a78bfa':'#34d399'}">${e.type==='renewal'?'🔄 Renewal 10%':'✨ New 20%'}</span></td>\n      <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;">${e.schoolId||'—'}</td>\n      <td style="color:var(--money);font-weight:700;">${fmt(e.amount)}</td>\n      <td><span class="chip ${e.paid?'ca':'cp'}" style="position:static;">${e.paid?'Paid':'Pending'}</span></td>\n      <td>${e.paid?'<span style="font-size:0.72rem;color:var(--sub);">Done</span>':`<button class="btn-g btn-sm" onclick="markPaid('${e._id}','${esc(e.agent)}',${e.amount||0})">✅ Pay</button>`}</td>\n    </tr>`;
   }).join('');
 }
 
@@ -1000,12 +914,7 @@ function exportLedger(){
 async function renderOpps(){
   let opps=[];
   try{opps=(await db.collection('admin_opportunities').get()).docs.map(d=>({id:d.id,...d.data()}));}catch(e){}
-  $('opp-body').innerHTML=opps.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--sub);padding:2rem;">No opportunities added yet.</td></tr>':opps.map(o=>`<tr>
-    <td>${esc(o.title)}</td><td>${esc(o.provider)}</td>
-    <td><span class="chip ca" style="position:static;">${o.type}</span></td>
-    <td style="font-size:0.75rem;">${o.deadline||'—'}</td>
-    <td><button class="btn-d btn-sm" onclick="deleteOpp('${o.id}')">🗑️</button></td>
-  </tr>`).join('');
+  $('opp-body').innerHTML=opps.length===0?'<tr><td colspan="5" style="text-align:center;color:var(--sub);padding:2rem;">No opportunities added yet.</td></tr>':opps.map(o=>`<tr>\n    <td>${esc(o.title)}</td><td>${esc(o.provider)}</td>\n    <td><span class="chip ca" style="position:static;">${o.type}</span></td>\n    <td style="font-size:0.75rem;">${o.deadline||'—'}</td>\n    <td><button class="btn-d btn-sm" onclick="deleteOpp('${o.id}')">🗑️</button></td>\n  </tr>`).join('');
 }
 
 async function saveOpp(){
