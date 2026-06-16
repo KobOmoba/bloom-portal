@@ -20,7 +20,13 @@
     <div class="lbox-logo">🎛️ AariNAT Command Center</div>
     <div class="lbox-sub">Educational Bloom™ Admin Panel</div>
     <label>Admin Password</label>
-    <input type="password" id="l-pwd" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')doLogin()">
+    <div style="position:relative;display:flex;align-items:center;">
+      <input type="password" id="l-pwd" placeholder="Enter admin password"
+        onkeydown="if(event.key==='Enter')doLogin()"
+        style="width:100%;padding-right:44px;">
+      <button onclick="(function(){var i=document.getElementById('l-pwd');var b=document.getElementById('eye-btn');i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'👁️':'🙈';})()" id="eye-btn"
+        style="position:absolute;right:8px;background:none;border:none;font-size:1.2rem;cursor:pointer;padding:4px 6px;color:var(--sub);" title="Show/hide password">👁️</button>
+    </div>
     <button id="l-btn" class="btn-b" onclick="doLogin()">🔓 Enter</button>
     <div id="l-err" class="err"></div>
     <p style="font-size:0.72rem;color:var(--sub);text-align:center;margin-top:0.75rem;">Forgot your password? Update it in ⚙️ Settings after logging in.</p>
