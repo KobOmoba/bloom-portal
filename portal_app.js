@@ -84,37 +84,20 @@ async function log(msg){
 
 // ── Login ──────────────────────────────────────────────────────────────────
 async function doLogin(){
-  const pwd = ($('l-pwd').value || '').trim();
-  const btn = $('l-btn');
-  btn.textContent = 'Checking...'; btn.disabled = true;
-
-  // Accepted passwords: hardcoded master OR one saved in localStorage settings
-  const MASTER = 'aarinat2024';
-  const localPwd = localStorage.getItem('ad_custom_pwd') || '';
-  const ok = (pwd === MASTER) || (localPwd && pwd === localPwd);
-
-  if (!ok) {
-    const e = $('l-err');
-    e.innerHTML = 'Wrong password. Default is <strong>aarinat2024</strong>';
-    e.style.display = 'block';
-    btn.textContent = '🔓 Enter'; btn.disabled = false;
-    return;
+  const pwd=($('l-pwd').value||'').trim();
+  const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
+  const MASTER='aarinat2024';
+  const localPwd=localStorage.getItem('ad_custom_pwd')||'';
+  if(pwd!==MASTER && pwd!==localPwd){
+    const e=$('l-err');
+    e.innerHTML='Wrong password. Default is <b>aarinat2024</b>';
+    e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;
   }
-
-  // Auth passed — store session with NO expiry (clear old expired ones first)
-  localStorage.setItem('ad_auth', '1');
-  localStorage.setItem('ad_auth_time', Date.now().toString());
-
-  showApp();
-}
-
-function showApp(){
-  $('login-screen').style.display = 'none';
-  $('main-app').style.display = 'block';
+  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
+  $('login-screen').style.display='none';
+  $('main-app').style.display='block';
   SQ.ping();
-  go('dashboard');
-  // Load data in background — don't block UI
-  setTimeout(()=>{ try{ initAdmin(); }catch(e){ console.warn('initAdmin bg:', e); } }, 100);
+  await initAdmin();
 }
 
 function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');if(pendingUnsub)pendingUnsub();location.reload();}
@@ -152,8 +135,8 @@ async function initAdmin(){
       await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:20},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Small (51–100)',price:20000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
     }
   }catch(e){console.warn('seed:',e);}
-  try { await renderDashboard(); } catch(e) { console.warn('renderDashboard:', e); }
-  try { startPendingListener(); } catch(e) { console.warn('startPendingListener:', e); }
+  await renderDashboard();
+  startPendingListener();
   go('dashboard');
 }
 
@@ -1153,9 +1136,15 @@ async function clearAll(){
 document.addEventListener('DOMContentLoaded',()=>{
   SQ.ping();
   const authRaw = localStorage.getItem('ad_auth');
-  // No expiry — session persists until manual logout
-  if(authRaw === '1'){
-    showApp();
+  const sessionValid = authRaw === '1';
+  if(sessionValid){
+    $('login-screen').style.display='none';
+    $('main-app').style.display='block';
+    try{ initAdmin(); }catch(e){ console.warn(e); go('dashboard'); }
+  } else if(authRaw){
+    // Session expired — clear and show login
+    localStorage.removeItem('ad_auth');
+    localStorage.removeItem('ad_auth_time');
   }
 });
 
