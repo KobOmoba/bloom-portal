@@ -102,7 +102,13 @@ async function doLogin(){
   $('login-screen').style.display='none';
   $('main-app').style.display='block';
   SQ.ping();
-  await initAdmin();
+  try {
+    await initAdmin();
+  } catch(e) {
+    console.warn('initAdmin error:', e);
+    // Show app anyway — just navigate to dashboard with empty state
+    go('dashboard');
+  }
 }
 
 function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');if(pendingUnsub)pendingUnsub();location.reload();}
@@ -140,8 +146,8 @@ async function initAdmin(){
       await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:20},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Small (51–100)',price:20000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
     }
   }catch(e){console.warn('seed:',e);}
-  await renderDashboard();
-  startPendingListener();
+  try { await renderDashboard(); } catch(e) { console.warn('renderDashboard:', e); }
+  try { startPendingListener(); } catch(e) { console.warn('startPendingListener:', e); }
   go('dashboard');
 }
 
