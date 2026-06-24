@@ -949,6 +949,7 @@ async function loadSettings(){
       $('s-cac').value=d.autoCAC||'full';
       if(d.whatsappTemplate)$('s-tpl').value=d.whatsappTemplate;
       if(d.geminiKey&&$('s-gemini'))$('s-gemini').value='●'.repeat(20)+' (set)';
+      if(d.groqApiKey&&$('s-groq'))$('s-groq').value=d.groqApiKey.slice(0,6)+'••••••'+d.groqApiKey.slice(-4);
     }
   }catch(e){}
 }
@@ -957,7 +958,9 @@ async function saveSettings(){
   const pwd=$('s-adminpwd').value.trim();
   if(pwd&&pwd.length<4)return alert('Admin password must be at least 4 characters.');
   const gk=($('s-gemini')?.value||'').replace(/●.*/,'').trim();
-  SQ.push({t:'saveSettings',d:{...(pwd?{adminPassword:pwd}:{}),...(gk?{geminiKey:gk}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  const groqRaw=($('s-groq')?.value||'').trim();
+  const groqKey=groqRaw.startsWith('gsk_')&&groqRaw.length>20?groqRaw:'';
+  SQ.push({t:'saveSettings',d:{...(pwd?{adminPassword:pwd}:{}),...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
   alert('✅ Settings saved!');
   log('⚙️ Settings updated');
 }
