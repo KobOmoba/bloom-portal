@@ -1,5 +1,5 @@
 // ── Firebase ───────────────────────────────────────────────────────────────
-const FB={apiKey:"AIzaSyCVEdunn3AZndDP5Rm1Z3Kv1e6G6W2mB_o",authDomain:"educationbloom-699ed.firebaseapp.com",projectId:"educationbloom-699ed",storageBucket:"educationbloom-699ed.firebasestorage.app",messagingSenderId:"33750392965",appId:"1:33750392965:web:2b3da887ede996ea8389ec"};
+const FB={apiKey:"AIzaSyDQ-Ss9-1XWkM2qFlZumLJM5KHLGMzw7Ss",authDomain:"educationbloom-699ed.firebaseapp.com",projectId:"educationbloom-699ed",storageBucket:"educationbloom-699ed.firebasestorage.app",messagingSenderId:"33750392965",appId:"1:33750392965:web:0f9d338ff75132e58389ec"};
 let db=null;
 try{
   firebase.initializeApp(FB);
@@ -86,21 +86,30 @@ async function log(msg){
 async function doLogin(){
   const pwd=($('l-pwd').value||'').trim();
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
-  const MASTER='aarinat2024';
-  const localPwd=localStorage.getItem('ad_custom_pwd')||'';
-  if(pwd!==MASTER && pwd!==localPwd){
-    const e=$('l-err');
-    e.innerHTML='Wrong password. Default is <b>aarinat2024</b>';
-    e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;
+  const e=$('l-err'); e.style.display='none';
+  try{
+    const resp=await fetch('https://superagent-626f0107.base44.app/functions/adminPortalLogin',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:pwd})
+    });
+    if(!resp.ok){
+      e.innerHTML='Wrong password.';
+      e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;
+    }
+    const{customToken}=await resp.json();
+    await firebase.auth().signInWithCustomToken(customToken);
+    $('login-screen').style.display='none';
+    $('main-app').style.display='block';
+    SQ.ping();
+    await initAdmin();
+  }catch(err){
+    e.innerHTML='Login failed — check your connection and try again.';
+    e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;
+    console.error('Login error:',err);
   }
-  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-  $('login-screen').style.display='none';
-  $('main-app').style.display='block';
-  SQ.ping();
-  await initAdmin();
 }
 
-function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');if(pendingUnsub)pendingUnsub();location.reload();}
+function logout(){if(!confirm('Logout?'))return;firebase.auth().signOut().catch(()=>{});if(pendingUnsub)pendingUnsub();location.reload();}
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 function go(tab){
@@ -944,7 +953,6 @@ async function loadSettings(){
     const doc=await db.collection('admin_settings').doc('main').get();
     if(doc.exists){
       const d=doc.data();
-      $('s-adminpwd').value=d.adminPassword||'';
       $('s-schoolpwd').value=d.defaultSchoolPassword||'bloom2026';
       $('s-cac').value=d.autoCAC||'full';
       if(d.whatsappTemplate)$('s-tpl').value=d.whatsappTemplate;
@@ -956,14 +964,12 @@ async function loadSettings(){
 }
 
 async function saveSettings(){
-  const pwd=$('s-adminpwd').value.trim();
-  if(pwd&&pwd.length<4)return alert('Admin password must be at least 4 characters.');
   const gk=($('s-gemini')?.value||'').replace(/●.*/,'').trim();
   const groqRaw=($('s-groq')?.value||'').trim();
   const hfRaw=($('s-hf')?.value||'').trim();
   const hfKey=hfRaw&&!hfRaw.includes('•')&&hfRaw.startsWith('hf_')&&hfRaw.length>20?hfRaw:null;
   const groqKey=groqRaw.startsWith('gsk_')&&groqRaw.length>20?groqRaw:'';
-  SQ.push({t:'saveSettings',d:{...(pwd?{adminPassword:pwd}:{}),...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
   alert('✅ Settings saved!');
   log('⚙️ Settings updated');
 }
@@ -1050,17 +1056,21 @@ async function clearAll(){
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
   SQ.ping();
-  const authRaw = localStorage.getItem('ad_auth');
-  const sessionValid = authRaw === '1';
-  if(sessionValid){
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    try{ initAdmin(); }catch(e){ console.warn(e); go('dashboard'); }
-  } else if(authRaw){
-    // Session expired — clear and show login
-    localStorage.removeItem('ad_auth');
-    localStorage.removeItem('ad_auth_time');
-  }
+  // Real Firebase Auth session restore — only lets the user in if they have a
+  // live session AND the isAdmin custom claim (minted server-side at login).
+  firebase.auth().onAuthStateChanged(async(user)=>{
+    if(!user){ return; } // stay on login screen
+    try{
+      const tokenResult=await user.getIdTokenResult();
+      if(tokenResult.claims && tokenResult.claims.isAdmin){
+        $('login-screen').style.display='none';
+        $('main-app').style.display='block';
+        try{ await initAdmin(); }catch(e){ console.warn(e); go('dashboard'); }
+      } else {
+        firebase.auth().signOut().catch(()=>{});
+      }
+    }catch(e){ console.warn('Session check failed:',e); }
+  });
 });
 
 
