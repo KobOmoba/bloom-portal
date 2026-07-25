@@ -9,6 +9,10 @@ try{
     .catch(err=>{ if(err.code!=='failed-precondition'&&err.code!=='unimplemented') console.warn('Persistence:',err.code); });
 }catch(e){console.warn('FB:',e);}
 
+// Real Firebase Auth admin account — created 25 July 2026, tried first on login.
+// Firestore rule for admin_settings checks this exact account's UID.
+const ADMIN_EMAIL = 'adebayoadesanya423@gmail.com';
+
 // ── State ──────────────────────────────────────────────────────────────────
 let pendingUnsub=null;
 let approvalData=null;
@@ -86,17 +90,37 @@ async function log(msg){
 async function doLogin(){
   const pwd=$('l-pwd').value;
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
+  const errEl=$('l-err'); errEl.style.display='none';
+
+  // Try real Firebase Auth first (own project, no third party involved).
+  try{
+    await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
+    localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
+    $('login-screen').style.display='none';
+    $('main-app').style.display='block';
+    SQ.ping();
+    await initAdmin();
+    btn.textContent='🔓 Enter'; btn.disabled=false;
+    return;
+  }catch(authErr){
+    // Wrong password for the Firebase Auth account, or it doesn't exist yet —
+    // fall through to the legacy check below rather than failing outright.
+  }
+
+  // Legacy fallback: Firestore-stored password. Kept so login never breaks
+  // outright during the migration to real Firebase Auth.
   let stored='aarinat2024';
   try{const doc=await db.collection('admin_settings').doc('main').get();if(doc.exists&&doc.data().adminPassword)stored=doc.data().adminPassword;}catch(e){}
-  if(pwd!==stored){const e=$('l-err');e.textContent='Incorrect password. Check your admin settings.';e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;}
+  if(pwd!==stored){errEl.textContent='Incorrect password. Check your admin settings.';errEl.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;}
   localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
   $('login-screen').style.display='none';
   $('main-app').style.display='block';
   SQ.ping();
   await initAdmin();
+  btn.textContent='🔓 Enter'; btn.disabled=false;
 }
 
-function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');localStorage.removeItem('ad_auth_time');if(pendingUnsub)pendingUnsub();location.reload();}
+function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');localStorage.removeItem('ad_auth_time');firebase.auth().signOut().catch(()=>{});if(pendingUnsub)pendingUnsub();location.reload();}
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 function go(tab){
