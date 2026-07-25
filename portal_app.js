@@ -84,32 +84,19 @@ async function log(msg){
 
 // ── Login ──────────────────────────────────────────────────────────────────
 async function doLogin(){
-  const pwd=($('l-pwd').value||'').trim();
+  const pwd=$('l-pwd').value;
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
-  const e=$('l-err'); e.style.display='none';
-  try{
-    const resp=await fetch('https://superagent-626f0107.base44.app/functions/adminPortalLogin',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({password:pwd})
-    });
-    if(!resp.ok){
-      e.innerHTML='Wrong password.';
-      e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;
-    }
-    const{customToken}=await resp.json();
-    await firebase.auth().signInWithCustomToken(customToken);
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    SQ.ping();
-    await initAdmin();
-  }catch(err){
-    e.innerHTML='Login failed — check your connection and try again.';
-    e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;
-    console.error('Login error:',err);
-  }
+  let stored='aarinat2024';
+  try{const doc=await db.collection('admin_settings').doc('main').get();if(doc.exists&&doc.data().adminPassword)stored=doc.data().adminPassword;}catch(e){}
+  if(pwd!==stored){const e=$('l-err');e.textContent='Incorrect password. Check your admin settings.';e.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;}
+  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
+  $('login-screen').style.display='none';
+  $('main-app').style.display='block';
+  SQ.ping();
+  await initAdmin();
 }
 
-function logout(){if(!confirm('Logout?'))return;firebase.auth().signOut().catch(()=>{});if(pendingUnsub)pendingUnsub();location.reload();}
+function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');localStorage.removeItem('ad_auth_time');if(pendingUnsub)pendingUnsub();location.reload();}
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 function go(tab){
@@ -959,17 +946,20 @@ async function loadSettings(){
       if(d.geminiKey&&$('s-gemini'))$('s-gemini').value='●'.repeat(20)+' (set)';
       if(d.groqApiKey&&$('s-groq'))$('s-groq').value=d.groqApiKey.slice(0,6)+'••••••'+d.groqApiKey.slice(-4);
       if(d.hfApiKey&&$('s-hf'))$('s-hf').value=d.hfApiKey.slice(0,6)+'••••••'+d.hfApiKey.slice(-4);
+      if($('s-adminpwd'))$('s-adminpwd').value=d.adminPassword||'';
     }
   }catch(e){}
 }
 
 async function saveSettings(){
+  const pwd=($('s-adminpwd')?.value||'').trim();
+  if(pwd&&pwd.length<4)return alert('Admin password must be at least 4 characters.');
   const gk=($('s-gemini')?.value||'').replace(/●.*/,'').trim();
   const groqRaw=($('s-groq')?.value||'').trim();
   const hfRaw=($('s-hf')?.value||'').trim();
   const hfKey=hfRaw&&!hfRaw.includes('•')&&hfRaw.startsWith('hf_')&&hfRaw.length>20?hfRaw:null;
   const groqKey=groqRaw.startsWith('gsk_')&&groqRaw.length>20?groqRaw:'';
-  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  SQ.push({t:'saveSettings',d:{...(pwd?{adminPassword:pwd}:{}),...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
   alert('✅ Settings saved!');
   log('⚙️ Settings updated');
 }
@@ -1056,21 +1046,19 @@ async function clearAll(){
 // ── Boot ───────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
   SQ.ping();
-  // Real Firebase Auth session restore — only lets the user in if they have a
-  // live session AND the isAdmin custom claim (minted server-side at login).
-  firebase.auth().onAuthStateChanged(async(user)=>{
-    if(!user){ return; } // stay on login screen
-    try{
-      const tokenResult=await user.getIdTokenResult();
-      if(tokenResult.claims && tokenResult.claims.isAdmin){
-        $('login-screen').style.display='none';
-        $('main-app').style.display='block';
-        try{ await initAdmin(); }catch(e){ console.warn(e); go('dashboard'); }
-      } else {
-        firebase.auth().signOut().catch(()=>{});
-      }
-    }catch(e){ console.warn('Session check failed:',e); }
-  });
+  const authRaw = localStorage.getItem('ad_auth');
+  const authTime = parseInt(localStorage.getItem('ad_auth_time')||'0');
+  const EIGHT_HOURS = 8 * 60 * 60 * 1000;
+  const sessionValid = authRaw === '1' && (Date.now() - authTime) < EIGHT_HOURS;
+  if(sessionValid){
+    $('login-screen').style.display='none';
+    $('main-app').style.display='block';
+    initAdmin();
+  } else if(authRaw){
+    // Session expired — clear and show login
+    localStorage.removeItem('ad_auth');
+    localStorage.removeItem('ad_auth_time');
+  }
 });
 
 
