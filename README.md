@@ -9,6 +9,74 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-07-25 (2) — Real Firebase Auth wired in properly (own project, no third party)
+
+**Completes the fix from the entry below.** Sequence, so this never
+repeats: got current Firestore rules from Bayo first (found `admin_settings`
+already required `request.auth != null && request.auth.token.isAdmin ==
+true` — left over from the Base44 change, and broken since nothing sets
+that claim without a privileged Admin SDK call neither of us has easy
+access to). Had Bayo create a real Firebase Auth account for himself
+(`adebayoadesanya423@gmail.com`) via a standalone tool, confirmed the UID,
+then updated the rule to check that specific UID instead of a claim:
+
+```
+match /admin_settings/{docId} {
+  allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+}
+match /{document=**} {
+  allow read, write: if true;
+}
+```
+(Bayo pasted this into Firebase Console himself and published it — not
+something pushed through code, since Firestore rules aren't deployable
+from this environment and Bayo should see/approve the exact text for
+something this sensitive anyway.)
+
+**`doLogin()` now tries real Firebase Auth first** —
+`signInWithEmailAndPassword(ADMIN_EMAIL, pwd)` — **and only falls back to
+the legacy Firestore-password check if that fails.** Both paths still
+work: type the new Firebase Auth password → real authenticated session,
+`admin_settings` (API keys, WhatsApp template, admin password field) all
+readable/writable again. Type the old Firestore password → still gets
+into the dashboard (deals/agents/ledger, all on open rules), but
+`admin_settings` reads/writes will fail until logged in with the real
+account. **Bayo should use the new password going forward** — the old
+one is a safety net during migration, not the long-term path.
+
+**Not yet done, worth a second pass:** `admin_agents`/`admin_deals`/
+`admin_ledger`/`admin_approved_schools` are all still `allow read, write:
+if true` via the catch-all rule. They can't just be locked to
+`request.auth != null` the way `admin_settings` was, because the agent
+app and school app also read/write parts of them with no auth of their
+own (see the access matrix below) — locking those down needs per-field
+or per-operation rules (e.g. `allow create: if true; allow update,
+delete: if request.auth != null` on `admin_deals`), not a blanket flip.
+Flagging, not doing without Bayo scoping it first.
+
+**Also noticed, not touched:** the live Firebase config
+(`apiKey`/`appId`) in this file doesn't match the one used in
+`bloom-agent`/`School-Bloom` — same project, different registered Web
+App. Probably from the same unauthorized change. Harmless as-is (still
+points at the same Firestore project), but worth knowing it's there.
+
+**Access matrix, for reference on the next pass:**
+
+| Collection | Read by | Write by | Lockable to admin-only? |
+|---|---|---|---|
+| `admin_settings` | portal only | portal only | ✅ done (this entry) |
+| `admin_agents` | agent app (login) + portal | portal only | write only |
+| `admin_deals` | agent app (own) + portal | agent app (create) + portal (update) | update/delete only |
+| `admin_ledger` | agent app (own earnings) + portal | portal only | write only |
+| `admin_approved_schools` | portal + school app (first login) | portal only | write only |
+| `schools` | school app + portal | school app + portal | needs real per-school auth, bigger job |
+
+**Commit:** `portal_app.js` (real auth + `ADMIN_EMAIL` constant) +
+`index.html` (cache bumped to `?v=20260725-3`). Firestore rule published
+directly by Bayo in Firebase Console.
+**Verify:** log in with the new password, confirm Settings tab loads and
+saves without errors — that's the real Firebase Auth path working.
+
 ### 2026-07-25 — URGENT: reverted unauthorized login change that locked Bayo out
 
 **Reported by Bayo:** "Authorization is blocking my password" — couldn't
