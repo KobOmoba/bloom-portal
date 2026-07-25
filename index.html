@@ -177,7 +177,9 @@
         <label style="margin-top:0.5rem;">HuggingFace API Key (OCR fallback when Groq fails)</label>
         <input type="text" id="s-hf" placeholder="hf_... paste your HuggingFace token here">
         <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.75rem;">Agents auto-fetch this at login. Get a free key at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</div>
-        <div style="font-size:0.72rem;color:#94a3b8;margin:0.5rem 0;">🔒 Login password is now managed securely server-side — ask your agent to rotate it if needed.</div>
+        <label>Admin Password</label>
+        <input type="text" id="s-adminpwd" placeholder="Leave blank to keep current password">
+        <div style="font-size:0.72rem;color:var(--sub);margin-bottom:0.75rem;">This is what you type on the login screen. Leave blank when saving other settings to keep it unchanged.</div>
         <label>Default School First-Time Password</label>
         <input type="text" id="s-schoolpwd" value="bloom2026">
         <label>CAC Auto-Allocation</label>
