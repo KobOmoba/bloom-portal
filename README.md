@@ -9,6 +9,103 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-07-25 (3) — Security lockdown: legacy password removed, OCR keys split out of admin_settings
+
+**Requested by Bayo:** "fix all" — after confirming his real Firebase Auth
+account worked, close the remaining gaps from the two entries below.
+
+**Removed the legacy Firestore-password login fallback entirely.**
+`doLogin()` now only accepts real Firebase Auth
+(`signInWithEmailAndPassword`) — no more back door via
+`admin_settings.adminPassword`. The Admin Password field in Settings is
+gone too, since it no longer did anything once the fallback was removed;
+leaving it would have been actively misleading.
+
+**Split OCR keys out of `admin_settings` into a new `public_ocr_keys/main`
+document**, so the agent app can read `groqApiKey`/`hfApiKey`/
+`ocrServiceUrl` directly — no external proxy, and without needing
+`admin_settings` (which holds the admin password, WhatsApp template, etc.)
+to stay world-readable. `syncOcrKeysToPublic()` mirrors just these three
+fields whenever a key changes in Settings, or via the new "🔄 Sync OCR
+Keys for Agent App" button. This is what let `bloom-agent`'s
+`_fetchGroqKeyFromFirestore()` drop its Base44 proxy call entirely — see
+that repo's README.
+
+**Firestore rules — proposed, not yet published by Bayo as of this
+commit** (he pastes these himself in Firebase Console, same as always,
+so he sees the exact text for something this sensitive):
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /admin_settings/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /public_ocr_keys/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_cac/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_activity/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_opportunities/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_ledger/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_agents/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_approved_schools/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_deals/{docId} {
+      allow create: if true;
+      allow read: if true;
+      allow update, delete: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_alerts/{docId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+Reads on `admin_agents`/`admin_deals`(create+read)/`admin_ledger`/
+`admin_approved_schools`/`public_ocr_keys` stay open deliberately — the
+agent and school apps have no real login of their own (agents look
+themselves up by phone number, schools by School ID), so a hard auth
+requirement there would break those apps outright. Closing that fully
+means giving agents and schools real Firebase Auth identities, which is
+a bigger redesign, not a rules tweak.
+
+**Explicitly NOT done — `schools` collection stays on the open
+catch-all.** This holds real schools' staff passwords in plaintext, live,
+today. Locking it down properly needs schools to have real auth
+identities rather than the current School-ID-lookup pattern, and the
+current single flat document (config + staff + students + financials all
+together, no field separation) doesn't cleanly support partial access
+either. Doing this hastily risks a third lockout incident, this time
+affecting real paying schools mid-day. Scope this as its own project with
+a test school first, not a same-session addition.
+
+**Commit:** `portal_app.js` (login + settings + sync function),
+`index.html` (Settings UI + cache bump). **Verify:** log in normally,
+confirm Settings still loads/saves, tap "Sync OCR Keys for Agent App"
+once and confirm no error.
+
 ### 2026-07-25 (2) — Real Firebase Auth wired in properly (own project, no third party)
 
 **Completes the fix from the entry below.** Sequence, so this never
