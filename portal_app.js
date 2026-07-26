@@ -984,7 +984,7 @@ async function syncOcrKeysToPublic(){
     const d=doc.data();
     if(!d.groqApiKey&&!d.hfApiKey){alert('No Groq/HF key set yet — add one above first.');return;}
     await db.collection('public_ocr_keys').doc('main').set({
-      groqApiKey:d.groqApiKey||'', hfApiKey:d.hfApiKey||'', updatedAt:new Date()
+      groqApiKey:d.groqApiKey||'', hfApiKey:d.hfApiKey||'', ocrServiceUrl:d.ocrServiceUrl||'', updatedAt:new Date()
     },{merge:true});
     log('🔄 OCR keys synced for agent app');
   }catch(e){ alert('Sync failed: '+(e.message||e)); }
