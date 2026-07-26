@@ -92,7 +92,6 @@ async function doLogin(){
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
   const errEl=$('l-err'); errEl.style.display='none';
 
-  // Try real Firebase Auth first (own project, no third party involved).
   try{
     await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
     localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
@@ -100,23 +99,10 @@ async function doLogin(){
     $('main-app').style.display='block';
     SQ.ping();
     await initAdmin();
-    btn.textContent='🔓 Enter'; btn.disabled=false;
-    return;
   }catch(authErr){
-    // Wrong password for the Firebase Auth account, or it doesn't exist yet —
-    // fall through to the legacy check below rather than failing outright.
+    errEl.textContent='Incorrect password.';
+    errEl.style.display='block';
   }
-
-  // Legacy fallback: Firestore-stored password. Kept so login never breaks
-  // outright during the migration to real Firebase Auth.
-  let stored='aarinat2024';
-  try{const doc=await db.collection('admin_settings').doc('main').get();if(doc.exists&&doc.data().adminPassword)stored=doc.data().adminPassword;}catch(e){}
-  if(pwd!==stored){errEl.textContent='Incorrect password. Check your admin settings.';errEl.style.display='block';btn.textContent='🔓 Enter';btn.disabled=false;return;}
-  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-  $('login-screen').style.display='none';
-  $('main-app').style.display='block';
-  SQ.ping();
-  await initAdmin();
   btn.textContent='🔓 Enter'; btn.disabled=false;
 }
 
@@ -970,22 +956,38 @@ async function loadSettings(){
       if(d.geminiKey&&$('s-gemini'))$('s-gemini').value='●'.repeat(20)+' (set)';
       if(d.groqApiKey&&$('s-groq'))$('s-groq').value=d.groqApiKey.slice(0,6)+'••••••'+d.groqApiKey.slice(-4);
       if(d.hfApiKey&&$('s-hf'))$('s-hf').value=d.hfApiKey.slice(0,6)+'••••••'+d.hfApiKey.slice(-4);
-      if($('s-adminpwd'))$('s-adminpwd').value=d.adminPassword||'';
     }
   }catch(e){}
 }
 
 async function saveSettings(){
-  const pwd=($('s-adminpwd')?.value||'').trim();
-  if(pwd&&pwd.length<4)return alert('Admin password must be at least 4 characters.');
   const gk=($('s-gemini')?.value||'').replace(/●.*/,'').trim();
   const groqRaw=($('s-groq')?.value||'').trim();
   const hfRaw=($('s-hf')?.value||'').trim();
   const hfKey=hfRaw&&!hfRaw.includes('•')&&hfRaw.startsWith('hf_')&&hfRaw.length>20?hfRaw:null;
   const groqKey=groqRaw.startsWith('gsk_')&&groqRaw.length>20?groqRaw:'';
-  SQ.push({t:'saveSettings',d:{...(pwd?{adminPassword:pwd}:{}),...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  if(groqKey||hfKey) await syncOcrKeysToPublic();
   alert('✅ Settings saved!');
   log('⚙️ Settings updated');
+}
+
+// Mirrors ONLY the OCR keys (never the admin password, WhatsApp template,
+// or anything else) into a separate document the agent app can read
+// directly, without any external proxy and without needing full admin
+// access to admin_settings. Run manually via the button, or automatically
+// whenever a key is changed in Settings above.
+async function syncOcrKeysToPublic(){
+  try{
+    const doc=await db.collection('admin_settings').doc('main').get();
+    if(!doc.exists){alert('No settings found yet — add a Groq/HF key above first.');return;}
+    const d=doc.data();
+    if(!d.groqApiKey&&!d.hfApiKey){alert('No Groq/HF key set yet — add one above first.');return;}
+    await db.collection('public_ocr_keys').doc('main').set({
+      groqApiKey:d.groqApiKey||'', hfApiKey:d.hfApiKey||'', updatedAt:new Date()
+    },{merge:true});
+    log('🔄 OCR keys synced for agent app');
+  }catch(e){ alert('Sync failed: '+(e.message||e)); }
 }
 
 async function exportAll(){
