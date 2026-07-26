@@ -176,10 +176,9 @@
         <input type="text" id="s-groq" placeholder="gsk_... paste your Groq API key here">
         <label style="margin-top:0.5rem;">HuggingFace API Key (OCR fallback when Groq fails)</label>
         <input type="text" id="s-hf" placeholder="hf_... paste your HuggingFace token here">
-        <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.75rem;">Agents auto-fetch this at login. Get a free key at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</div>
-        <label>Admin Password</label>
-        <input type="text" id="s-adminpwd" placeholder="Leave blank to keep current password">
-        <div style="font-size:0.72rem;color:var(--sub);margin-bottom:0.75rem;">This is what you type on the login screen. Leave blank when saving other settings to keep it unchanged.</div>
+        <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.5rem;">Agents fetch this directly from Firestore now — no third-party proxy involved. Get a free key at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</div>
+        <button class="btn-b" style="background:#1e293b;margin-bottom:0.75rem;" onclick="syncOcrKeysToPublic()">🔄 Sync OCR Keys for Agent App</button>
+        <div style="font-size:0.7rem;color:var(--sub);margin-bottom:0.75rem;">Tap this once now, then again anytime you change the Groq/HF key above. Copies just these two keys — nothing else — to where the agent app can read them.</div>
         <label>Default School First-Time Password</label>
         <input type="text" id="s-schoolpwd" value="bloom2026">
         <label>CAC Auto-Allocation</label>
