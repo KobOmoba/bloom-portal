@@ -141,6 +141,7 @@ async function initAdmin(){
       await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:20},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Small (51–100)',price:20000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
     }
   }catch(e){console.warn('seed:',e);}
+  syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
   await renderDashboard();
   startPendingListener();
   go('dashboard');
@@ -977,17 +978,17 @@ async function saveSettings(){
 // directly, without any external proxy and without needing full admin
 // access to admin_settings. Run manually via the button, or automatically
 // whenever a key is changed in Settings above.
-async function syncOcrKeysToPublic(){
+async function syncOcrKeysToPublic(silent){
   try{
     const doc=await db.collection('admin_settings').doc('main').get();
-    if(!doc.exists){alert('No settings found yet — add a Groq/HF key above first.');return;}
+    if(!doc.exists){ if(!silent) alert('No settings found yet — add a Groq/HF key above first.'); return; }
     const d=doc.data();
-    if(!d.groqApiKey&&!d.hfApiKey){alert('No Groq/HF key set yet — add one above first.');return;}
+    if(!d.groqApiKey&&!d.hfApiKey){ if(!silent) alert('No Groq/HF key set yet — add one above first.'); return; }
     await db.collection('public_ocr_keys').doc('main').set({
       groqApiKey:d.groqApiKey||'', hfApiKey:d.hfApiKey||'', ocrServiceUrl:d.ocrServiceUrl||'', updatedAt:new Date()
     },{merge:true});
     log('🔄 OCR keys synced for agent app');
-  }catch(e){ alert('Sync failed: '+(e.message||e)); }
+  }catch(e){ if(!silent) alert('Sync failed: '+(e.message||e)); else console.warn('OCR key sync failed:',e.message); }
 }
 
 async function exportAll(){
