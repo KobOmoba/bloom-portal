@@ -1,5 +1,5 @@
 // EduBloom — Command Center Service Worker
-const CACHE_NAME = 'edubloom-portal-v1781679935';
+const CACHE_NAME = 'edubloom-portal-v20260802-forcerefresh';
 const SHELL_ASSETS = [
   './',
   './index.html',
