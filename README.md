@@ -9,6 +9,47 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-08-02 — Reset Password tool for approved schools (Bayo-only)
+
+**Requested by Bayo:** add "forgot password" everywhere a password is
+required, and make it "retrievable." Since School-Bloom's staff passwords
+are SHA-256 hashed (deliberately — Bayo confirmed this was to close
+security loopholes), a hash can't be reversed back into the original
+password. **Retrieval isn't possible by design; reset is the correct
+secure equivalent**, so that's what was built.
+
+**New: `resetPrincipalPassword(schoolId, schoolName, principalPhone)`** —
+button on each Approved School card ("🔑 Reset Password"). Generates a
+random 8-character password, then:
+1. Reads `schools/{id}`, finds the staff entry with `role==='Principal'`,
+   overwrites its `password` field with the new **plaintext** value.
+   School-Bloom's `_verifyPassword()`/`_migratePasswordIfNeeded()` already
+   handle a plaintext password transparently and auto-hash it on the
+   Principal's next successful login — same path legacy passwords already
+   use, so no hashing logic was duplicated here in the portal.
+2. Syncs the same new password into `admin_approved_schools.password`
+   (plaintext, used by the existing Resend/Copy buttons — was previously
+   only ever set once at approval time and could go stale after any
+   in-app password change; this keeps it current).
+3. Logs the action, then offers to relay the new password to the
+   Principal via WhatsApp.
+
+**Explicitly Bayo-only, not agent-accessible.** Portal is already
+password-gated to Bayo's own account, so this was safe by construction —
+but the WhatsApp routing in School-Bloom's matching "forgot password"
+links (see School-Bloom's README) was fixed in the same session to stop
+directing locked-out Principals/staff to their **agent** (who has no way
+to actually reset anything) and point them to AariNAT/Bayo directly
+instead, since Bayo is the only person with this tool.
+
+**Not done:** no equivalent per-staff-member reset tool in the portal —
+that's handled inside School-Bloom itself now (Principal → Staff tab →
+🔑 Reset, see that repo's README), since the Principal already has
+legitimate reason to manage their own staff without going through Bayo
+for every case.
+
+---
+
 ### 2026-07-25 (3) — Security lockdown: legacy password removed, OCR keys split out of admin_settings
 
 **Requested by Bayo:** "fix all" — after confirming his real Firebase Auth
