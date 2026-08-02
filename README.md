@@ -9,6 +9,41 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-08-02 (2) — Fixed: sw.js was serving the pre-lockdown login screen
+
+**Symptom:** Bayo tried to log in after the 25 July security lockdown
+(legacy `admin_settings.adminPassword` removed) and still saw the *old*
+login screen — "Enter admin password" / "aarinat2024" / "Update it in
+⚙️ Settings" wording — with "Incorrect password."
+
+**Root cause:** `sw.js`'s `CACHE_NAME` (`edubloom-portal-v1781679935`)
+hadn't been bumped since before the lockdown. The service worker's
+`fetch` handler is cache-first for the app shell (`index.html`,
+`portal_app.js`, `style.css`), so his phone kept serving the cached
+pre-lockdown files — the actual deployed code was already correct, it
+just never reached his browser.
+
+**Fix:** bumped `CACHE_NAME` to `edubloom-portal-v20260802-forcerefresh`.
+On `activate`, the SW already deletes any cache whose name doesn't match
+`CACHE_NAME` — so this alone forces every client to drop the stale shell
+and re-fetch on next visit (SW already calls `skipWaiting()` +
+`clients.claim()`, no other code changes needed).
+
+**Lesson for next Claude:** `?v=N` on the `<script>` tag in `index.html`
+(the existing cache-busting rule) does **not** help here — it only
+busts the browser's *HTTP* cache. This app also has a service worker
+with its own *separate* cache layer that ignores query strings entirely
+(it caches by request URL as registered in `SHELL_ASSETS`, `'./index.html'`
+etc., not by the querystring the browser actually requested). **Any push
+that touches `index.html`, `portal_app.js`, or `style.css` should also
+bump `CACHE_NAME` in `sw.js`** — otherwise the fix is live on GitHub/
+GitHub Pages but invisible to anyone with the PWA already installed or
+the site already visited. This applies to `bloom-agent` and
+`School-Bloom` too if they carry a service worker — check before
+assuming a push is "live" for the end user.
+
+---
+
 ### 2026-08-02 — Reset Password tool for approved schools (Bayo-only)
 
 **Requested by Bayo:** add "forgot password" everywhere a password is
