@@ -558,7 +558,7 @@ async function renderApproved(){
     const overAlert = tierExceeded
       ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.4rem 0.6rem;font-size:0.74rem;color:#dc2626;margin-top:4px;">\n           ⚠️ ${count} students exceeds tier limit (${tierMax}). Needs upgrade to <b>${newTier.name||'?'}</b> — ₦${fmt(newTier.price||0)}/term\n         </div>` : '';
 
-    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">\n      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">\n        ${statusChip}${planChip}\n        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}\n      </div>\n      <div class="dn">${esc(s.schoolName)}</div>\n      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>\n      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>\n      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>\n      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">\n        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}\n        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}\n      </div>\n      ${overAlert}\n      <div class="dact" style="flex-wrap:wrap;gap:5px;">\n        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>\n        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>\n        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>\n        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>\n        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>\n        ${isPrem
+    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">\n      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">\n        ${statusChip}${planChip}\n        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}\n      </div>\n      <div class="dn">${esc(s.schoolName)}</div>\n      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>\n      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>\n      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>\n      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">\n        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}\n        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}\n      </div>\n      ${overAlert}\n      <div class="dact" style="flex-wrap:wrap;gap:5px;">\n        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>\n        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>\n        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>\n        <button class="btn-sm" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="resetPrincipalPassword('${s.schoolId}','${esc(s.schoolName)}','${esc(s.principalPhone)}')">🔑 Reset Password</button>\n        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>\n        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>\n        ${isPrem
           ? `<button onclick="setPlan('${s.schoolId}','basic')" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
           : `<button onclick="setPlan('${s.schoolId}','premium')" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;">⭐ Activate Premium</button>`
         }\n        ${tierExceeded
@@ -594,6 +594,47 @@ async function unlockSchool(schoolId){
     await log(`🔓 Unlocked ${schoolId} after tier upgrade payment`);
     renderApproved();
   } catch(e){ alert('Error: '+e.message); }
+}
+
+// Issues a brand-new password for a school's Principal login and relays it via
+// WhatsApp. Does NOT reveal the old password — School-Bloom hashes staff
+// passwords (SHA-256) precisely so they can't be read back; this replaces it
+// instead, same pattern as "forgot password" everywhere else. Written as
+// plaintext to schools/{id}.staff[].password — School-Bloom auto-hashes any
+// plaintext password on the next successful login (_migratePasswordIfNeeded),
+// same path legacy passwords already use, so no separate hashing code needed here.
+async function resetPrincipalPassword(schoolId, schoolName, principalPhone){
+  if(!confirm(`Generate a new password for ${schoolName} (${schoolId})?\n\nThis replaces their current password — they'll need the new one to log in.`)) return;
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  let newPwd=''; for(let i=0;i<8;i++) newPwd+=chars[Math.floor(Math.random()*chars.length)];
+  try{
+    const schoolDoc = await db.collection('schools').doc(schoolId).get();
+    if(schoolDoc.exists){
+      const data = schoolDoc.data();
+      const staff = data.staff || [];
+      const pIdx = staff.findIndex(s=>s.role==='Principal');
+      if(pIdx>=0){
+        staff[pIdx].password = newPwd;
+        await db.collection('schools').doc(schoolId).update({staff});
+      } else {
+        console.warn('No Principal entry in staff array for', schoolId, '— password not set on live school doc.');
+      }
+    } else {
+      console.warn('School doc not found for', schoolId, '— only admin_approved_schools record updated.');
+    }
+    const snap = await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
+    if(!snap.empty) await snap.docs[0].ref.update({password:newPwd});
+
+    await log(`🔑 Password reset for ${schoolName} (${schoolId})`);
+    renderApproved();
+
+    if(confirm(`✅ New password: ${newPwd}\n\nSend it to the Principal via WhatsApp now?`)){
+      const msg = `Hello,\n\nYour EduBloom school password has been reset.\n\nSchool ID: ${schoolId}\nNew Password: ${newPwd}\n\nLogin at: https://school.edubloom.com.ng\n\n– AariNAT Admin`;
+      window.open(`https://wa.me/${(principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
+    }
+  }catch(e){
+    alert('Reset failed: '+(e.message||e));
+  }
 }
 
 async function resend(schoolId){
