@@ -108,6 +108,17 @@ async function doLogin(){
 
 function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');localStorage.removeItem('ad_auth_time');firebase.auth().signOut().catch(()=>{});if(pendingUnsub)pendingUnsub();location.reload();}
 
+async function forgotPassword(){
+  const errEl=$('l-err');
+  if(!confirm(`Send a password reset link to ${ADMIN_EMAIL}?`)) return;
+  try{
+    await firebase.auth().sendPasswordResetEmail(ADMIN_EMAIL);
+    if(errEl){errEl.style.color='var(--money)';errEl.textContent='✅ Reset link sent to '+ADMIN_EMAIL+' — check your inbox (and spam folder).';errEl.style.display='block';}
+  }catch(e){
+    if(errEl){errEl.style.color='var(--danger)';errEl.textContent='Could not send reset email: '+(e.message||e);errEl.style.display='block';}
+  }
+}
+
 // ── Navigation ─────────────────────────────────────────────────────────────
 function go(tab){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
