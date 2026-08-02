@@ -100,7 +100,14 @@ async function doLogin(){
     SQ.ping();
     await initAdmin();
   }catch(authErr){
-    errEl.textContent='Incorrect password.';
+    const code = authErr?.code || '';
+    if(code==='auth/network-request-failed'){
+      errEl.textContent='⚠️ Network problem — the request couldn\'t reach Firebase. Check your connection (WiFi/data) and try again. This is NOT a wrong-password error.';
+    } else if(code==='auth/invalid-credential' || code==='auth/wrong-password' || code==='auth/user-not-found' || code==='auth/invalid-login-credentials'){
+      errEl.textContent='Incorrect password.';
+    } else {
+      errEl.textContent='Login failed ('+(code||'unknown error')+'): '+(authErr?.message||'Try again.');
+    }
     errEl.style.display='block';
   }
   btn.textContent='🔓 Enter'; btn.disabled=false;
