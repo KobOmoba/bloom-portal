@@ -9,6 +9,37 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-08-02 (3) — doLogin() was hiding real errors behind "Incorrect password"
+
+**Symptom:** Bayo tried the reset-link flow (see previous entry), got an
+explicit `auth/network-request-failed` error from `sendPasswordResetEmail`,
+then tried logging in directly with what should be the right password and
+got "Incorrect password" — with no way to tell if the password was
+actually wrong or if the *same* network flakiness was hitting the login
+call too.
+
+**Root cause:** `doLogin()`'s catch block hardcoded `errEl.textContent=
+'Incorrect password.'` for every single Firebase Auth error, network
+failures included. So a bad connection and a wrong password were
+indistinguishable to the user — actively misleading when debugging.
+
+**Fix:** catch block now branches on `authErr.code`:
+- `auth/network-request-failed` → explicit "Network problem... NOT a
+  wrong-password error" message, telling the person to check their
+  connection.
+- `auth/invalid-credential` / `wrong-password` / `user-not-found` /
+  `invalid-login-credentials` → still says "Incorrect password." (the
+  cases where that's actually true).
+- anything else → shows the real Firebase error code + message instead of
+  guessing.
+
+**Lesson for next Claude:** don't collapse all auth errors into one
+generic message — on a low-connectivity Nigerian mobile network, network
+errors during login are common enough that hiding them behind "wrong
+password" sends people down the wrong troubleshooting path every time.
+
+---
+
 ### 2026-08-02 (2) — Fixed: sw.js was serving the pre-lockdown login screen
 
 **Symptom:** Bayo tried to log in after the 25 July security lockdown
