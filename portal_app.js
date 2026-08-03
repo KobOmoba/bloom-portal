@@ -92,6 +92,7 @@ async function doLogin(){
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
   const errEl=$('l-err'); errEl.style.display='none';
 
+  // Try real Firebase Auth first (own project, no third party involved).
   try{
     await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
     localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
@@ -99,17 +100,31 @@ async function doLogin(){
     $('main-app').style.display='block';
     SQ.ping();
     await initAdmin();
+    btn.textContent='🔓 Enter'; btn.disabled=false;
+    return;
   }catch(authErr){
-    const code = authErr?.code || '';
-    if(code==='auth/network-request-failed'){
-      errEl.textContent='⚠️ Network problem — the request couldn\'t reach Firebase. Check your connection (WiFi/data) and try again. This is NOT a wrong-password error.';
-    } else if(code==='auth/invalid-credential' || code==='auth/wrong-password' || code==='auth/user-not-found' || code==='auth/invalid-login-credentials'){
-      errEl.textContent='Incorrect password.';
-    } else {
-      errEl.textContent='Login failed ('+(code||'unknown error')+'): '+(authErr?.message||'Try again.');
-    }
-    errEl.style.display='block';
+    // Any failure here — network or wrong password — falls through to the
+    // Firestore backup below rather than failing outright. Restored
+    // 2026-08-02 after auth/network-request-failed locked Bayo out even
+    // with the correct password, because Firestore was still reachable
+    // when identitytoolkit.googleapis.com specifically wasn't.
+    console.warn('Firebase Auth failed, trying backup password:', authErr?.code, authErr?.message);
   }
+
+  // Backup: Firestore-stored password (Settings → Backup Admin Password).
+  let stored='aarinat2024';
+  try{const doc=await db.collection('admin_settings').doc('main').get();if(doc.exists&&doc.data().adminPassword)stored=doc.data().adminPassword;}catch(e){}
+  if(pwd!==stored){
+    errEl.textContent='Incorrect password. (Tried Firebase Auth and the backup password — neither matched. If you know Firebase Auth is right and this is a network issue, try again on a different connection.)';
+    errEl.style.display='block';
+    btn.textContent='🔓 Enter'; btn.disabled=false;
+    return;
+  }
+  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
+  $('login-screen').style.display='none';
+  $('main-app').style.display='block';
+  SQ.ping();
+  await initAdmin();
   btn.textContent='🔓 Enter'; btn.disabled=false;
 }
 
@@ -1016,6 +1031,7 @@ async function loadSettings(){
       if(d.geminiKey&&$('s-gemini'))$('s-gemini').value='●'.repeat(20)+' (set)';
       if(d.groqApiKey&&$('s-groq'))$('s-groq').value=d.groqApiKey.slice(0,6)+'••••••'+d.groqApiKey.slice(-4);
       if(d.hfApiKey&&$('s-hf'))$('s-hf').value=d.hfApiKey.slice(0,6)+'••••••'+d.hfApiKey.slice(-4);
+      if(d.adminPassword&&$('s-adminpwd'))$('s-adminpwd').placeholder='●'.repeat(Math.min(d.adminPassword.length,12))+' (set — type to change)';
     }
   }catch(e){}
 }
@@ -1026,8 +1042,11 @@ async function saveSettings(){
   const hfRaw=($('s-hf')?.value||'').trim();
   const hfKey=hfRaw&&!hfRaw.includes('•')&&hfRaw.startsWith('hf_')&&hfRaw.length>20?hfRaw:null;
   const groqKey=groqRaw.startsWith('gsk_')&&groqRaw.length>20?groqRaw:'';
-  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  const newAdminPwd=($('s-adminpwd')?.value||'').trim();
+  if(newAdminPwd && newAdminPwd.length<4) return alert('Backup admin password must be at least 4 characters.');
+  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),...(newAdminPwd?{adminPassword:newAdminPwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
   if(groqKey||hfKey) await syncOcrKeysToPublic();
+  if($('s-adminpwd')) $('s-adminpwd').value='';
   alert('✅ Settings saved!');
   log('⚙️ Settings updated');
 }
