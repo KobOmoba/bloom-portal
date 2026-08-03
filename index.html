@@ -181,6 +181,9 @@
         <div style="font-size:0.7rem;color:var(--sub);margin-bottom:0.75rem;">Tap this once now, then again anytime you change the Groq/HF key above. Copies just these two keys — nothing else — to where the agent app can read them.</div>
         <label>Default School First-Time Password</label>
         <input type="text" id="s-schoolpwd" value="bloom2026">
+        <label>Backup Admin Password (used only if Firebase Auth is unreachable)</label>
+        <input type="text" id="s-adminpwd" placeholder="Leave blank to keep current">
+        <div style="font-size:0.7rem;color:var(--sub);margin-top:-8px;margin-bottom:0.75rem;">Restored 2026-08-02 — login tries your real Firebase Auth password first, and only falls back to this one if the Firebase Auth network call itself fails (not just a wrong password). Keeps you from being locked out by a flaky connection. Default if never set: <code>aarinat2024</code>.</div>
         <label>CAC Auto-Allocation</label>
         <select id="s-cac">
           <option value="full">Add full agent commission to CAC fund</option>
@@ -258,7 +261,7 @@
   </div>
 </div>
 
-<script src="portal_app.js?v=20260802-realerr"></script>
+<script src="portal_app.js?v=20260802-loginfallback"></script>
 
 <!-- Edit Agent Modal -->
 <div class="modal" id="edit-agent-modal">
