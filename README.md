@@ -9,6 +9,46 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-08-03 — Two real fixes: missing Authorized Domain, and sw.js dropping CSS/JS on network hiccups
+
+**Root cause of the login failures finally found — was never a network
+problem, code bug, or API key issue.** Firebase Console → Authentication
+→ Settings → Authorized domains was missing `portal.edubloom.com.ng` (and
+`school.edubloom.com.ng`, `agent.edubloom.com.ng`). Only `kobomoba.github.io`,
+`localhost`, and the two default Firebase domains were listed. Without the
+actual custom domain authorized, `signInWithEmailAndPassword` calls fail —
+and on the Firebase JS SDK, this specific misconfiguration surfaces as the
+generic `auth/network-request-failed` rather than a clear "unauthorized
+domain" error, which is why this took so long to pin down and why so many
+network/code theories got chased first. **Bayo added the missing domains
+himself in Firebase Console — no code change needed for this part.**
+
+Lesson for next Claude: if `auth/network-request-failed` shows up on a
+*custom domain* specifically (works or partially works on the default
+`.firebaseapp.com`/`.web.app`/`.github.io` domains), check Authorized
+Domains before anything else. It's a 30-second check that would have
+saved a lot of back-and-forth.
+
+**Second, unrelated bug found while chasing the above:** after several
+rapid `sw.js` cache-bumps today (see 2026-08-02 entries), the page loaded
+with zero CSS — raw unstyled HTML. Root cause: the old fetch handler's
+error fallback only recovered the HTML *document* on a failed request
+(`if (event.request.destination === 'document') return caches.match(...)`);
+a dropped request for `style.css` or `portal_app.js` on Bayo's flaky
+connection had no fallback at all and just silently failed, permanently
+breaking the page until a lucky reload.
+
+**Fix:** rewrote the fetch handler as network-first for *every* asset
+(not just non-shell files), with a real cache fallback using
+`{ignoreSearch: true}` so a cache-busted URL still matches whatever
+version is cached, for any request type — not just documents. This also
+fixes the earlier stale-cache class of bug more robustly: since it's
+network-first now, a normal page load always gets the freshest deployed
+code when online, and only falls back to cache when actually offline or
+mid-connection-drop.
+
+---
+
 ### 2026-08-02 (4) — Restored Firestore-password fallback (same pattern as the July 25 incident, this time intentional)
 
 **Bayo:** "This kind of problem occurred at the early stage of the app
