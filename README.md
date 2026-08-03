@@ -9,6 +9,54 @@ device before considering a change done.
 
 ## 📜 Change History (newest first)
 
+### 2026-08-02 (4) — Restored Firestore-password fallback (same pattern as the July 25 incident, this time intentional)
+
+**Bayo:** "This kind of problem occurred at the early stage of the app
+development" — correctly connecting today's lockout to the **July 25
+unauthorized-lockout incident** (see that entry below): both times, login
+depended entirely on one network path succeeding, with zero fallback if
+it didn't.
+
+**What was actually happening today:** `firebase.auth().
+signInWithEmailAndPassword()` kept failing with `auth/network-request-failed`
+— the request never reached Google's identitytoolkit servers at all, on a
+connection that could otherwise browse fine. Firestore calls (agent app,
+school app, other parts of this very portal) were unaffected — so
+whatever the cause (carrier-level throttling of that specific Google API
+domain, Brave Shields, or similar), it was selective to Firebase Auth's
+network endpoint, not a general outage. Never fully root-caused because
+it's not reproducible from this side — flagged as unresolved below.
+
+**Fix:** the Firestore-password fallback that was removed on 2026-07-26
+("now real Firebase Auth is confirmed working") has been restored,
+**correctly this time** — as an actual fallback path inside `doLogin()`,
+not a silent single point of failure:
+1. Try `signInWithEmailAndPassword()` first, same as before.
+2. **Any** failure (network or wrong password) falls through to comparing
+   against `admin_settings/main.adminPassword` (default `aarinat2024` if
+   never set) instead of failing outright.
+3. Settings → "Backup Admin Password" field restored so Bayo can set/see
+   (masked) this fallback from inside the app — no dependency on Claude
+   or Firebase Console to manage it.
+
+**This is not a repeat of the July 25 mistake.** That incident was an
+*unauthorized* change that silently *removed* the working login path with
+no way back in. This is the opposite: Bayo explicitly asked for this
+fixed, it *adds* a path back in without removing the Firebase Auth one,
+and both paths are visible/editable from inside the app itself.
+
+**Not resolved — flag for next Claude:** *why* Firebase Auth's specific
+network endpoint is unreachable on Bayo's connection while everything
+else works. Worth checking, if it recurs: whether Brave Shields is
+blocking `identitytoolkit.googleapis.com` for this site specifically, and
+whether the Firebase project's Authorized Domains list
+(Firebase Console → Authentication → Settings) includes
+`portal.edubloom.com.ng` and the GitHub Pages default domain — an
+unauthorized-domain condition can sometimes surface as a vague network
+error rather than a clear "unauthorized domain" one on some SDK versions.
+
+---
+
 ### 2026-08-02 (3) — doLogin() was hiding real errors behind "Incorrect password"
 
 **Symptom:** Bayo tried the reset-link flow (see previous entry), got an
