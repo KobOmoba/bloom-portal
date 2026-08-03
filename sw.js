@@ -1,5 +1,5 @@
 // EduBloom — Command Center Service Worker
-const CACHE_NAME = 'edubloom-portal-v20260802-loginfallback';
+const CACHE_NAME = 'edubloom-portal-v20260803-fetchfix';
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -30,8 +30,8 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
 
   // Skip Firestore — it has its own offline persistence
   if (url.hostname.includes('firestore.googleapis.com') ||
@@ -39,25 +39,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for app shell
-  if (url.origin === self.location.origin || url.hostname === 'www.gstatic.com') {
-    event.respondWith(
-      caches.match(event.request).then(cached => {
-        if (cached) return cached;
-        return fetch(event.request).then(response => {
-          if (response && response.status === 200) {
-            caches.open(CACHE_NAME).then(c => c.put(event.request, response.clone()));
-          }
-          return response;
-        }).catch(() => {
-          if (event.request.destination === 'document') return caches.match('./index.html');
-        });
-      })
-    );
-    return;
-  }
-
-  // Network-first for everything else
+  // Network-first for everything, including the app shell — always serve
+  // the freshest code when online. Only fall back to cache when the
+  // network request itself fails (offline, or a transient drop like the
+  // one that broke style.css loading with no recovery on 2026-08-03).
+  // ignoreSearch so a cache-busted URL (?v=N) still matches whatever
+  // version is cached as a last resort, instead of failing outright.
   event.respondWith(
     fetch(event.request)
       .then(response => {
@@ -66,7 +53,13 @@ self.addEventListener('fetch', event => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(async () => {
+        const cached = await caches.match(event.request, { ignoreSearch: true });
+        if (cached) return cached;
+        if (event.request.destination === 'document') {
+          return caches.match('./index.html', { ignoreSearch: true });
+        }
+      })
   );
 });
 
