@@ -436,3 +436,18 @@ of how well-intentioned. If a security gap is spotted (e.g. Firestore
 rules not matching what `TECHNICAL_REFERENCE.md` documents), flag it in
 this README and describe the tradeoffs — do not silently implement a
 fix that could lock the owner out of his own production system.
+
+
+---
+
+## Changelog
+
+### 2026-08-05 — Firebase API key consolidated
+
+**Single Firebase web app registration across all apps**
+- bloom-portal previously used a second Firebase web app registration (`appId: 0f9d338f`, `apiKey: AIzaSyDQ-Ss9...`)
+- Reverted to the original single registration (`appId: 2b3da887`, `apiKey: AIzaSyCVEdunn3...`) shared with school-bloom, bloom-agent, and bloom-school-v2
+- Both registrations point to the same `educationbloom-699ed` Firebase project (same Firestore, same Auth) — this is purely a cleanup for consistency
+- The old registration (`0f9d338f`) is now orphaned and can be deleted from Firebase Console → Project Settings → Your Apps
+
+**Rule established:** README.md must be updated after every completed task, in every repo that was touched.
