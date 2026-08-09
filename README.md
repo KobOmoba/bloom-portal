@@ -451,3 +451,19 @@ fix that could lock the owner out of his own production system.
 - The old registration (`0f9d338f`) is now orphaned and can be deleted from Firebase Console → Project Settings → Your Apps
 
 **Rule established:** README.md must be updated after every completed task, in every repo that was touched.
+
+
+---
+
+## 📍 Current Position — 2026-08-07
+
+### Status: Production — no pending changes
+
+Portal is working correctly. All changes since last session:
+- Firebase API key consolidated to single registration (`appId: 2b3da887`)
+- `schools` collection alignment confirmed — portal writes to `schools`, school app now reads from `schools`
+
+### Pending actions for Bayo
+- **Publish Firestore security rules** — see `bloom-school-v2` README Step 3 section for the complete rules to paste into Firebase Console
+- **Delete orphaned `v2_schools` collection** from Firestore Console (no app writes to it anymore)
+- **Delete second Firebase web app registration** (`appId: 0f9d338f`) from Firebase Console → Project Settings → Your Apps
