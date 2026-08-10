@@ -169,6 +169,7 @@ function go(tab){
   if(tab==='ledger')    renderLedger();
   if(tab==='opps')      renderOpps();
   if(tab==='settings')  loadSettings();
+  if(tab==='calendar'){ getTermCalendar().then(cal=>{ const sel=$('cal-state-select'); if(sel){ const states=Object.keys(cal).filter(s=>s!=='_default'); sel.innerHTML='<option value="_default">All States (Default)</option>'+states.map(s=>`<option value="${s}">${s}</option>`).join(''); } renderCalendarTable('_default',cal); }); }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -191,6 +192,7 @@ async function initAdmin(){
     }
   }catch(e){console.warn('seed:',e);}
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
+  getTermCalendar().catch(()=>{}); // pre-warm calendar cache so first approval calculates expiry correctly
   await renderDashboard();
   startPendingListener();
   go('dashboard');
@@ -213,8 +215,300 @@ function renderPendingList(deals){
   if(!deals.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">✅ No pending deals.</p>';return;}
   c.innerHTML=deals.map(d=>{
     const comm=Math.round((d.tier?.price||0)*((d.agent?.commission||20)/100)*(d.terms||1));
-    return`<div class="deal pend">\n      <span class="chip cp">PENDING</span>\n      <div class="dn">${esc(d.school?.name)}</div>\n      <div class="dm">Agent: ${esc(d.agent?.name)} · ${d.school?.studentCount||0} students</div>\n      <div class="dm">📱 ${esc(d.school?.phone)}</div>\n      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price)}/term · Your commission: ${fmt(comm)}</div>\n      ${d.notes?`<div class="dm" style="font-style:italic;margin-top:4px;">"${esc(d.notes)}"</div>`:''}\n      <div class="dact">\n        <button class="btn-g btn-sm" onclick="openApproveModal('${d.id}')">✅ Approve</button>\n        <button class="btn-d btn-sm" onclick="rejectDeal('${d.id}','${esc(d.school?.name)}')">❌ Reject</button>\n      </div>\n    </div>`;
+    const ts=d.timestamp?.toDate?d.timestamp.toDate():d.timestamp?new Date(d.timestamp):null;
+    const tsLabel=ts?ts.toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+    // Detect deals where codes were generated but approval write failed (schoolId already allocated)
+    const stuckDeal = !!d.schoolId;
+    return`<div class="deal pend" style="${stuckDeal?'border-left:3px solid #f59e0b;':''}">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">
+        <span class="chip cp">PENDING</span>
+        ${stuckDeal?`<span class="chip" style="background:#f59e0b;color:#fff;">⚠️ CODES ISSUED — STUCK</span>`:''}
+        ${tsLabel?`<span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${tsLabel}</span>`:''}
+      </div>
+      <div class="dn">${esc(d.school?.name)}</div>
+      <div class="dm">Agent: ${esc(d.agent?.name)} · ${d.school?.studentCount||0} students</div>
+      <div class="dm">📱 ${esc(d.school?.phone)}</div>
+      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price)}/term · Your commission: ${fmt(comm)}</div>
+      ${d.notes?`<div class="dm" style="font-style:italic;margin-top:4px;">"${esc(d.notes)}"</div>`:''}
+      ${stuckDeal?`<div class="dm" style="font-size:0.72rem;color:#f59e0b;background:rgba(245,158,11,0.08);border-radius:5px;padding:3px 6px;margin-top:4px;">
+        🆔 ID already assigned: <b style="font-family:monospace;">${d.schoolId}</b> — click Re-Apply to complete activation.
+      </div>`:''}
+      <div class="dact">
+        ${stuckDeal
+          ? `<button class="btn-g btn-sm" onclick="reApproveStuck('${d.id}','${d.schoolId}')">🔄 Re-Apply Approval</button>`
+          : `<button class="btn-g btn-sm" onclick="openApproveModal('${d.id}')">✅ Approve</button>`
+        }
+        <button class="btn-d btn-sm" onclick="rejectDeal('${d.id}','${esc(d.school?.name)}')">❌ Reject</button>
+      </div>
+    </div>`;
   }).join('');
+}
+
+// Re-apply approval for a deal where codes were issued but the Firestore write failed
+async function reApproveStuck(dealId, existingSchoolId){
+  const doc = await db.collection('admin_deals').doc(dealId).get().catch(()=>null);
+  if(!doc||!doc.exists){ alert('Deal not found.'); return; }
+  const deal = doc.data();
+  const sd = await db.collection('admin_settings').doc('main').get().catch(()=>null);
+  const defPwd = sd?.exists?(sd.data().defaultSchoolPassword||'bloom2026'):'bloom2026';
+  approvalData = { id:dealId, deal, schoolId:existingSchoolId, password:defPwd };
+  // Show confirmation before re-running
+  if(!confirm(`Re-apply approval for ${deal.school?.name}?\n\nSchool ID: ${existingSchoolId}\nPassword: ${defPwd}\n\nThis will re-write all records and send WhatsApp credentials.`)) return;
+  await confirmApproval();
+}
+
+// ══════════════════════════════════════════════════════════
+// NIGERIA SCHOOL TERM CALENDAR
+// Academic year: Sept → July (3 terms)
+// Each entry: resumption = first day of term, vacation = last day of term
+// Edit via openCalendarEditor() or directly in Firestore admin_settings/main.termCalendar
+// ══════════════════════════════════════════════════════════
+
+const DEFAULT_TERM_CALENDAR = {
+  // Format: year_termN: { resumption: 'YYYY-MM-DD', vacation: 'YYYY-MM-DD' }
+  // These are defaults — Bayo can override per-state in Settings → Calendar
+  '_default': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'Lagos': {
+    '2025_term1': { resumption:'2025-09-15', vacation:'2025-12-06' },
+    '2025_term2': { resumption:'2025-12-29', vacation:'2026-03-28' },
+    '2026_term3': { resumption:'2026-04-20', vacation:'2026-07-18' },
+    '2026_term1': { resumption:'2026-09-14', vacation:'2026-12-05' },
+    '2026_term2': { resumption:'2026-12-28', vacation:'2027-03-27' },
+    '2027_term3': { resumption:'2027-04-19', vacation:'2027-07-17' },
+  },
+  'Ogun': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'Oyo': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'Osun': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'Ondo': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'Ekiti': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-06', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'FCT': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-18' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-18' },
+  },
+  'Rivers': {
+    '2025_term1': { resumption:'2025-09-22', vacation:'2025-12-13' },
+    '2025_term2': { resumption:'2026-01-05', vacation:'2026-04-04' },
+    '2026_term3': { resumption:'2026-04-27', vacation:'2026-07-25' },
+    '2026_term1': { resumption:'2026-09-21', vacation:'2026-12-12' },
+    '2026_term2': { resumption:'2027-01-04', vacation:'2027-04-03' },
+    '2027_term3': { resumption:'2027-04-26', vacation:'2027-07-24' },
+  },
+  'Kano': {
+    '2025_term1': { resumption:'2025-10-06', vacation:'2025-12-20' },
+    '2025_term2': { resumption:'2026-01-12', vacation:'2026-04-11' },
+    '2026_term3': { resumption:'2026-05-04', vacation:'2026-08-01' },
+    '2026_term1': { resumption:'2026-10-05', vacation:'2026-12-19' },
+    '2026_term2': { resumption:'2027-01-11', vacation:'2027-04-10' },
+    '2027_term3': { resumption:'2027-05-03', vacation:'2027-07-31' },
+  },
+  'Kaduna': {
+    '2025_term1': { resumption:'2025-10-06', vacation:'2025-12-20' },
+    '2025_term2': { resumption:'2026-01-12', vacation:'2026-04-11' },
+    '2026_term3': { resumption:'2026-05-04', vacation:'2026-08-01' },
+    '2026_term1': { resumption:'2026-10-05', vacation:'2026-12-19' },
+    '2026_term2': { resumption:'2027-01-11', vacation:'2027-04-10' },
+    '2027_term3': { resumption:'2027-05-03', vacation:'2027-07-31' },
+  },
+};
+let _calendarCache = null;
+
+async function getTermCalendar(){
+  if(_calendarCache) return _calendarCache;
+  try{
+    const sd = await db.collection('admin_settings').doc('main').get();
+    if(sd.exists && sd.data().termCalendar){
+      _calendarCache = {...DEFAULT_TERM_CALENDAR, ...sd.data().termCalendar};
+      return _calendarCache;
+    }
+  }catch(e){ console.warn('Calendar load failed, using defaults:', e); }
+  _calendarCache = DEFAULT_TERM_CALENDAR;
+  return _calendarCache;
+}
+
+// Figure out which term key is active on a given date
+function currentTermKey(date, stateCalendar){
+  const yr = date.getFullYear();
+  // Check all keys in the calendar to find which term this date falls within
+  const keys = Object.keys(stateCalendar);
+  for(const k of keys){
+    const t = stateCalendar[k];
+    const res = new Date(t.resumption);
+    const vac = new Date(t.vacation);
+    if(date >= res && date <= vac) return k;
+  }
+  // Not currently in a term — find the next upcoming term
+  let soonest = null, soonestKey = null;
+  for(const k of keys){
+    const res = new Date(stateCalendar[k].resumption);
+    if(res > date && (!soonest || res < soonest)){
+      soonest = res; soonestKey = k;
+    }
+  }
+  return soonestKey;
+}
+
+// Calculate when N terms expire based on state calendar
+// Falls back to 3 months/term if no calendar data found
+function calcTermExpiry(fromDate, stateName, terms){
+  const cal = _calendarCache || DEFAULT_TERM_CALENDAR;
+  const stateCal = cal[stateName] || cal['_default'];
+  if(!stateCal){ const d=new Date(fromDate); d.setMonth(d.getMonth()+terms*3); return d; }
+  
+  let termKey = currentTermKey(fromDate, stateCal);
+  const allKeys = Object.keys(stateCal).sort();
+  
+  if(!termKey){
+    // Before the first term — expiry = fromDate + terms*3 months (fallback)
+    const d = new Date(fromDate); d.setMonth(d.getMonth()+terms*3); return d;
+  }
+  
+  // Walk forward N terms from current
+  let idx = allKeys.indexOf(termKey);
+  idx = Math.min(idx + terms - 1, allKeys.length - 1);
+  const finalKey = allKeys[idx];
+  return finalKey ? new Date(stateCal[finalKey].vacation) : (()=>{const d=new Date(fromDate);d.setMonth(d.getMonth()+terms*3);return d;})();
+}
+
+// ── Calendar Editor UI ────────────────────────────────────────────────────
+async function openCalendarEditor(){
+  const cal = await getTermCalendar();
+  const states = Object.keys(cal).filter(s=>s!=='_default');
+  const TERM_LABELS = {
+    '2025_term1':'2025/26 Term 1','2025_term2':'2025/26 Term 2','2026_term3':'2025/26 Term 3',
+    '2026_term1':'2026/27 Term 1','2026_term2':'2026/27 Term 2','2027_term3':'2026/27 Term 3',
+  };
+  const allTermKeys = Object.keys(TERM_LABELS);
+  
+  // Build editor for default + each state
+  const stateOptions = ['_default',...states].map(s=>
+    `<option value="${s}">${s==='_default'?'All States (Default)':s}</option>`
+  ).join('');
+  
+  const $m = document.getElementById('calendar-modal');
+  if(!$m){ alert('Calendar modal not found — reload the page.'); return; }
+  
+  document.getElementById('cal-state-select').innerHTML = stateOptions;
+  renderCalendarTable('_default', cal);
+  $m.classList.add('on');
+}
+
+function renderCalendarTable(stateName, cal){
+  const TERM_LABELS = {
+    '2025_term1':'2025/26 Term 1','2025_term2':'2025/26 Term 2','2026_term3':'2025/26 Term 3',
+    '2026_term1':'2026/27 Term 1','2026_term2':'2026/27 Term 2','2027_term3':'2026/27 Term 3',
+  };
+  const stateCal = (cal||_calendarCache||DEFAULT_TERM_CALENDAR)[stateName] || {};
+  const rows = Object.keys(TERM_LABELS).map(key=>{
+    const t = stateCal[key] || {resumption:'',vacation:''};
+    const res = t.resumption; const vac = t.vacation;
+    const today = new Date();
+    const resDate = res?new Date(res):null;
+    const vacDate = vac?new Date(vac):null;
+    const isActive = resDate && vacDate && today >= resDate && today <= vacDate;
+    const days = resDate && vacDate ? Math.round((vacDate-resDate)/(1000*60*60*24)) : 0;
+    return `<tr style="${isActive?'background:rgba(16,185,129,0.08);':''}">
+      <td style="font-weight:600;font-size:0.82rem;">${TERM_LABELS[key]}${isActive?'<span style="font-size:0.65rem;color:#10b981;margin-left:4px;">● ACTIVE</span>':''}</td>
+      <td><input type="date" id="cal_res_${key}" value="${res}" style="background:var(--card);border:1px solid var(--border);border-radius:5px;padding:2px 6px;color:var(--text);font-size:0.8rem;"></td>
+      <td><input type="date" id="cal_vac_${key}" value="${vac}" style="background:var(--card);border:1px solid var(--border);border-radius:5px;padding:2px 6px;color:var(--text);font-size:0.8rem;"></td>
+      <td style="font-size:0.78rem;color:var(--sub);">${days?days+' days':'—'}</td>
+    </tr>`;
+  }).join('');
+  
+  const el = document.getElementById('cal-table-body');
+  if(el) el.innerHTML = rows;
+  const lbl = document.getElementById('cal-state-label');
+  if(lbl) lbl.textContent = stateName==='_default'?'All States (Default)':stateName;
+}
+
+async function saveCalendarState(){
+  const selEl = document.getElementById('cal-state-select');
+  if(!selEl) return;
+  const stateName = selEl.value;
+  const TERM_KEYS = ['2025_term1','2025_term2','2026_term3','2026_term1','2026_term2','2027_term3'];
+  const stateData = {};
+  for(const key of TERM_KEYS){
+    const res = document.getElementById(`cal_res_${key}`)?.value||'';
+    const vac = document.getElementById(`cal_vac_${key}`)?.value||'';
+    if(res||vac) stateData[key]={resumption:res,vacation:vac};
+  }
+  const cal = await getTermCalendar();
+  cal[stateName] = stateData;
+  _calendarCache = cal;
+  // Persist to Firestore
+  try{
+    await db.collection('admin_settings').doc('main').set({termCalendar:{[stateName]:stateData}},{merge:true});
+    const info=document.getElementById('cal-save-info');
+    if(info){info.textContent='✅ Saved '+new Date().toLocaleTimeString();info.style.color='#10b981';}
+  }catch(e){
+    const info=document.getElementById('cal-save-info');
+    if(info){info.textContent='⚠️ Save failed: '+(e.message||e);info.style.color='#ef4444';}
+  }
+}
+
+function onCalStateChange(){
+  const sel = document.getElementById('cal-state-select');
+  if(!sel) return;
+  renderCalendarTable(sel.value, _calendarCache||DEFAULT_TERM_CALENDAR);
+}
+
+function addCalendarState(){
+  const name = prompt('Enter new state name (e.g. Kwara, Kogi, Benue):','')?.trim();
+  if(!name) return;
+  const cal = _calendarCache || DEFAULT_TERM_CALENDAR;
+  if(!cal[name]) cal[name] = {...(cal['_default']||{})};
+  _calendarCache = cal;
+  const sel = document.getElementById('cal-state-select');
+  if(sel){ 
+    const opt=document.createElement('option'); opt.value=name; opt.textContent=name; 
+    sel.appendChild(opt); sel.value=name; 
+  }
+  renderCalendarTable(name, cal);
 }
 
 // ── Approve ────────────────────────────────────────────────────────────────
@@ -244,15 +538,35 @@ async function confirmApproval(){
   if(!approvalData)return;
   const{id,deal,schoolId,password}=approvalData;
   const commission=Math.round((deal.tier?.price||0)*((deal.agent?.commission||20)/100)*(deal.terms||1));
+  const TS = firebase.firestore.FieldValue.serverTimestamp;
 
-  // 1. Mark deal approved
-  SQ.push({t:'updateDeal',id,d:{status:'approved',schoolId,approvedAt:new Date()}});
+  // ── STEP 1 (CRITICAL): Mark deal approved — DIRECT write, NOT through SQ
+  // Using direct write so the real-time listener fires immediately and the
+  // deal disappears from the pending list. SQ is unreliable here because
+  // a failed SQ item has no user-visible error and the deal stays stuck.
+  try {
+    await db.collection('admin_deals').doc(id).update({
+      status: 'approved',
+      schoolId,
+      approvedAt: TS()
+    });
+  } catch(writeErr) {
+    const errMsg = writeErr?.code === 'permission-denied'
+      ? 'Permission denied — you may need to log in with the main password instead of Emergency Access.'
+      : (writeErr?.message || String(writeErr));
+    alert(`⚠️ APPROVAL FAILED — deal not updated.\n\n${errMsg}\n\n📋 WRITE THESE DOWN:\nSchool ID: ${schoolId}\nPassword: ${password}\n\nFix the connection issue and click "Re-Apply Approval" on this deal.`);
+    // Store the schoolId on the deal so the stuck-deal banner appears
+    SQ.push({t:'updateDeal',id,d:{schoolId}});
+    closeM('approve-modal');
+    approvalData=null;
+    return;
+  }
+
   // 2. Add to approved schools list
-  // Calculate payment expiry — each term = 3 months
+  // Calculate payment expiry — use term calendar if available, else 3 months per term
   const now = new Date();
-  const expiryDate = new Date(now);
-  expiryDate.setMonth(expiryDate.getMonth() + ((deal.terms||1) * 3));
-  SQ.push({t:'addSchoolRecord',id:schoolId,d:{
+  const expiryDate = calcTermExpiry(now, deal.school?.state||'', deal.terms||1);
+  const schoolRecord = {
     schoolId,
     schoolName: deal.school?.name,
     principalPhone: deal.school?.phone,
@@ -263,16 +577,25 @@ async function confirmApproval(){
     agentName: deal.agent?.name,
     agentPhone: deal.agent?.phone,
     agentId: deal.agent?.id||'',
-    approvedAt: now,
+    approvedAt: TS(),
+    activatedAt: TS(),          // human-readable activation timestamp
+    state: deal.school?.state||'',
     termsPaid: deal.terms||1,
     termsRemaining: deal.terms||1,
     expiryDate: expiryDate,
-    paymentStatus: 'active',    // active | expired | suspended
+    paymentStatus: 'active',
     studentCount: deal.school?.studentCount||0,
     scannedCount: deal.scannedCount||0,
     renewalReminderSent: false,
     lastRenewalCheck: now
-  }});
+  };
+  // Direct write so the approved list updates immediately
+  try {
+    await db.collection('admin_approved_schools').doc(schoolId).set(schoolRecord, {merge:true});
+  } catch(e) {
+    console.warn('addSchoolRecord direct write failed, queuing:', e);
+    SQ.push({t:'addSchoolRecord',id:schoolId,d:{...schoolRecord, approvedAt:now, activatedAt:now}});
+  }
   // 3. Create actual school account — DIRECT write so portal login works immediately
   const schoolDoc = {
     config:{
@@ -596,7 +919,7 @@ async function renderApproved(){
     const overAlert = tierExceeded
       ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:0.4rem 0.6rem;font-size:0.74rem;color:#dc2626;margin-top:4px;">\n           ⚠️ ${count} students exceeds tier limit (${tierMax}). Needs upgrade to <b>${newTier.name||'?'}</b> — ₦${fmt(newTier.price||0)}/term\n         </div>` : '';
 
-    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">\n      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">\n        ${statusChip}${planChip}\n        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}\n      </div>\n      <div class="dn">${esc(s.schoolName)}</div>\n      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>\n      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>\n      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>\n      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">\n        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}\n        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}\n      </div>\n      ${overAlert}\n      <div class="dact" style="flex-wrap:wrap;gap:5px;">\n        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>\n        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>\n        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>\n        <button class="btn-sm" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="resetPrincipalPassword('${s.schoolId}','${esc(s.schoolName)}','${esc(s.principalPhone)}')">🔑 Reset Password</button>\n        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>\n        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>\n        ${isPrem
+    return`<div class="deal appr" style="${tierExceeded?'border-left:3px solid #dc2626;':''}">\n      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">\n        ${statusChip}${planChip}\n        ${count?`<span style="font-size:0.7rem;background:#f1f5f9;border:1px solid var(--border);border-radius:12px;padding:1px 8px;color:var(--sub);">👥 ${count} students</span>`:''}\n      </div>\n      <div class="dn">${esc(s.schoolName)}</div>\n      <div class="dm">ID: <span style="font-family:'JetBrains Mono',monospace;color:#60a5fa;">${s.schoolId}</span> · ${esc(s.tier)}</div>\n      <div class="dm">📱 ${esc(s.principalPhone)} · Agent: ${esc(s.agentName)}</div>\n      <div class="dm" style="color:var(--text);">🔑 ${esc(s.password)}</div>\n      <div class="dm" style="font-size:0.72rem;color:var(--sub);">🕐 Activated: ${(()=>{const d=s.activatedAt?.toDate?s.activatedAt.toDate():s.approvedAt?.toDate?s.approvedAt.toDate():null;return d?d.toLocaleString('en-NG',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';})()}${s.state?' · 📍 '+esc(s.state):''}</div>\n      <div class="dm" style="color:${daysLeft!==null&&daysLeft<=14?'#f59e0b':daysLeft<0?'#ef4444':'var(--sub)'};">\n        💳 ${s.termsPaid||1} term(s) paid · Expires: ${expiryLabel}${daysLeft!==null?' ('+daysLeft+'d left)':''}\n        ${daysLeft!==null&&daysLeft<=30?`<button onclick="sendRenewalReminder('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentPhone)}','${esc(s.principalPhone)}',${daysLeft})" style="background:#f59e0b;color:#fff;border:none;border-radius:5px;padding:1px 7px;font-size:0.7rem;cursor:pointer;margin-left:4px;">📲 Remind Agent</button>`:''}\n      </div>\n      ${overAlert}\n      <div class="dact" style="flex-wrap:wrap;gap:5px;">\n        <button class="btn-w btn-sm" onclick="resend('${s.schoolId}')">📤 Resend</button>\n        <button class="btn-ghost btn-sm" style="color:white;" onclick="copyC('${s.schoolId}')">📋 Copy</button>\n        <button class="btn-w btn-sm" onclick="openEditSchool('${s._id}','${s.schoolId}')">✏️ Edit</button>\n        <button class="btn-sm" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="resetPrincipalPassword('${s.schoolId}','${esc(s.schoolName)}','${esc(s.principalPhone)}')">🔑 Reset Password</button>\n        <button class="btn-sm" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="recordRenewal('${s.schoolId}','${esc(s.schoolName)}','${esc(s.agentName)}','${esc(s.agentPhone)}','${s.tierPrice||0}')">🔄 Record Renewal</button>\n        <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteSchool('${s._id}','${s.schoolId}','${esc(s.schoolName)}')">🗑️ Remove</button>\n        ${isPrem
           ? `<button onclick="setPlan('${s.schoolId}','basic')" style="background:#f1f5f9;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;color:var(--sub);">Downgrade to Basic</button>`
           : `<button onclick="setPlan('${s.schoolId}','premium')" style="background:linear-gradient(135deg,#7c3aed,#2563eb);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;">⭐ Activate Premium</button>`
         }\n        ${tierExceeded
