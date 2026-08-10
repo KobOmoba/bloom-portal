@@ -1,3 +1,52 @@
+# bloom-portal
+
+## 📍 Current Position — 2026-08-10
+
+### 🔴 CRITICAL: Firestore rules broke portal + agent app — corrected rules issued
+
+**What happened:**
+The Step 3 Firestore rules published on 2026-08-09 set all `admin_*` collections
+and the `schools` top-level document to `allow read, write: if authed()` — meaning
+Firebase Auth session required. But the portal logs in with a **password check only**
+(no Firebase Auth sign-in), and the agent app has **no Firebase Auth at all**.
+Result: every portal write (deal approval, school creation, ledger entry) got
+"Permission denied." Portal got stuck in a re-apply loop. Agent login also broke.
+
+**Symptoms seen:**
+- Portal: "APPROVAL FAILED — deal not updated. Permission denied."
+- Re-Apply looped: generated orphan IDs BLOOM-SK5H8G and BLOOM-78QH8G for
+  FUTURE PROMISE COMPREHENSIVE COLLEGE
+- Multiple Wisdom Walks duplicates created from repeated agent submissions
+  during agent-app permission error period
+- Agent app: "Firebase permission error" on login
+
+**Corrected rules issued 2026-08-10:**
+All `admin_*` collections and `schools/{schoolId}` top-level set back to
+`allow read, write: if true`. Strict auth rules kept ONLY on subcollections
+(`staff_directory`, `students`, `private/fees`, `scores`) which are the ones
+that actually contain sensitive student data.
+
+**Bayo must:** paste the corrected rules in Firebase Console → Firestore → Rules
+→ Publish. Portal SQ will auto-flush within seconds of publish.
+
+**Cleanup still needed after rules publish:**
+- Firestore → schools collection: delete whichever of BLOOM-SK5H8G / BLOOM-78QH8G
+  did not fully create. BLOOM-78QH8G was the last re-apply attempt — verify it.
+- admin_deals: reject duplicate Wisdom Walks entries (keep one per school).
+- admin_approved_schools: remove any orphan approval records for the dead IDs.
+
+### ✅ Agent app fix: corrected rules also fix agent login
+
+The same corrected rules restore public read on `admin_agents`, `admin_deals`,
+and `admin_ledger` — agent app login will work the moment rules are published.
+
+---
+
+## Previous Update — 2026-08-09
+
+### Date display added to pending deals and approved schools
+(Pending — was in progress when rules emergency interrupted. To be resumed.)
+
 # bloom-portal (PRODUCTION — AariNAT Command Center)
 
 Bayo's admin dashboard. Approves deals, manages agents, pays commission,
