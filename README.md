@@ -528,3 +528,105 @@ Portal is working correctly. All changes since last session:
 - **Publish Firestore security rules** — see `bloom-school-v2` README Step 3 section for the complete rules to paste into Firebase Console
 - **Delete orphaned `v2_schools` collection** from Firestore Console (no app writes to it anymore)
 - **Delete second Firebase web app registration** (`appId: 0f9d338f`) from Firebase Console → Project Settings → Your Apps
+
+
+---
+
+## 2026-08-10 — Session: Approval Bug Fix + Term Calendar + Emergency Password Removal
+
+### Changes pushed this session (2 files: `portal_app.js`, `index.html`)
+
+---
+
+### 🔴 BUG FIX — FUTURE PROMISE COMPREHENSIVE COLLEGE stuck in pending
+
+**Root cause identified:**
+`confirmApproval()` was routing the critical `status:'approved'` Firestore write through the
+**SQ (Sync Queue)** instead of writing directly. The SQ silently retries failed writes up to
+3 times then **drops them with no notification**. When the portal was in a "Syncing" state
+(visible in screenshot at 11:53 PM), the SQ was backed up. The write got dropped, the deal
+stayed permanently "pending" even though school ID `BLOOM-CE4QTD` had already been generated.
+
+**Fix applied:**
+- `confirmApproval()` now writes `status:'approved'` directly to Firestore (not via SQ) as
+  the very first action. If the write fails, an alert shows immediately with:
+  - The exact error (e.g. permission denied, network error)
+  - The school ID and password so they can be written down
+  - The deal is flagged so the Re-Apply button appears
+- `admin_approved_schools` record is also written directly (not via SQ) with fallback to SQ
+  only if the direct write fails
+- SQ still used for non-critical operations (ledger, CAC, activity log)
+
+**Stuck-deal detection (new):**
+Any pending deal that already has a `schoolId` assigned (codes were generated but the Firestore
+write failed) now shows:
+- Yellow `⚠️ CODES ISSUED — STUCK` badge with the assigned ID shown
+- **🔄 Re-Apply Approval** button instead of the regular Approve button
+- Clicking it re-runs the full `confirmApproval()` flow including WhatsApp credentials send
+
+**Immediate action for FUTURE PROMISE:** Reload portal → Pending tab → tap
+**🔄 Re-Apply Approval** on the Future Promise card.
+
+---
+
+### 🗑️ Emergency password removed
+
+The `AariNAT-Emergency-2026!` client-side bypass block (added 2026-08-03 after repeated
+Firebase Auth lockouts) has been **permanently deleted** from `portal_app.js`.
+
+**Bayo's explicit instruction:** "Delete the emergency password. I will continue to use aarinat2024."
+
+**Login flow now (two paths only):**
+1. `signInWithEmailAndPassword()` via Firebase Auth — tried first, every time
+2. If Firebase Auth fails (network unreachable), falls back to Firestore backup password
+   — defaults to `aarinat2024`, changeable in Settings → Admin Password
+
+No third path exists. There is no client-side bypass.
+
+The one reference to "Emergency Access" in the approval error message was also updated to:
+*"your login session may have expired. Logout and log back in with aarinat2024."*
+
+---
+
+### 📅 Nigeria Term Calendar (new feature)
+
+**New `📅 Calendar` tab** added to the portal navigation (in `index.html` + `portal_app.js`).
+
+**What it does:**
+- Shows all 6 term blocks (2025/26 Term 1–3, 2026/27 Term 1–3) with resumption and vacation dates
+- Currently active term is highlighted in green with `● ACTIVE` label
+- State-specific calendars for: Lagos, Ogun, Oyo, Osun, Ondo, Ekiti, FCT, Rivers, Kano, Kaduna
+- A national `_default` calendar for all other states
+- **Edit button**: select any state → change resumption/vacation dates → tap **💾 Save Dates**
+  → persists to Firestore `admin_settings/main.termCalendar` immediately
+- **➕ Add State** button to add any of the other 26 states
+
+**Integration with approvals:**
+`calcTermExpiry()` now uses the calendar to set the subscription expiry date to the actual
+end-of-term vacation date for the school's state, instead of a flat 3-months-per-term estimate.
+Calendar cache is pre-warmed at login so the first approval calculates correctly.
+
+**Firestore storage:** `admin_settings/main.termCalendar` — merged field, non-destructive.
+
+---
+
+### ⏰ Activation timestamps added to approved school cards
+
+Approved school cards now display:
+```
+🕐 Activated: 10 Aug 2026, 04:46 AM · 📍 Ogun
+```
+Both `activatedAt` (set to Firestore server timestamp on approval) and `state` are stored
+in `admin_approved_schools/{schoolId}` for new approvals going forward.
+
+---
+
+### Commits this session
+- `ff107c6` — portal_app.js: direct write + stuck-deal re-apply + term calendar + timestamps
+- `f26b745` — index.html: Calendar tab + calendar section HTML
+- `32793d9` — portal_app.js: remove emergency password, update error message
+
+### Standing rules (unchanged)
+- **Update README after every action, same session, no exceptions**
+- No auth/access-control changes without Bayo explicitly requesting them
+- aarinat2024 is the one and only portal password. No hardcoded bypasses.
