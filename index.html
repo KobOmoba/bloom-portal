@@ -75,6 +75,7 @@
     <button data-t="ledger" onclick="go('ledger')">💰 Ledger</button>
     <button data-t="opps" onclick="go('opps')">🔍 Opportunities</button>
     <button data-t="settings" onclick="go('settings')">⚙️ Settings</button>
+    <button data-t="calendar" onclick="go('calendar')">📅 Calendar</button>
   </nav>
 
   <main class="wrap">
@@ -213,6 +214,51 @@
           <button class="btn-d" onclick="clearAll()">🗑️ Clear All Data</button>
         </div>
         <p style="font-size:0.72rem;color:var(--sub);margin-top:0.5rem;">Clear all is permanent and cannot be undone.</p>
+      </div>
+    </section>
+
+    <!-- CALENDAR -->
+    <section id="sec-calendar" class="sec">
+      <div class="card">
+        <div class="ct">📅 Nigeria School Term Calendar</div>
+        <p style="font-size:0.8rem;color:var(--sub);margin-bottom:0.75rem;">
+          These dates are used to calculate subscription expiry when you approve a school.
+          Each state can have custom dates. Select a state below to view or edit its term schedule.
+        </p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:0.75rem;">
+          <label style="font-size:0.82rem;font-weight:600;">State:</label>
+          <select id="cal-state-select" onchange="onCalStateChange()" style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text);font-size:0.82rem;flex:1;min-width:160px;">
+            <option value="_default">All States (Default)</option>
+          </select>
+          <button onclick="addCalendarState()" style="background:#1e40af;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:0.78rem;cursor:pointer;white-space:nowrap;">➕ Add State</button>
+        </div>
+        <div id="cal-state-label" style="font-size:0.78rem;color:var(--sub);margin-bottom:8px;"></div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+            <thead>
+              <tr style="border-bottom:1px solid var(--border);">
+                <th style="text-align:left;padding:6px 4px;color:var(--sub);">Term</th>
+                <th style="text-align:left;padding:6px 4px;color:var(--sub);">📅 Resumption</th>
+                <th style="text-align:left;padding:6px 4px;color:var(--sub);">🏁 Vacation</th>
+                <th style="text-align:left;padding:6px 4px;color:var(--sub);">Days</th>
+              </tr>
+            </thead>
+            <tbody id="cal-table-body"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:0.75rem;flex-wrap:wrap;">
+          <button onclick="saveCalendarState()" style="background:#059669;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:0.82rem;cursor:pointer;font-weight:700;">💾 Save Dates</button>
+          <span id="cal-save-info" style="font-size:0.75rem;color:var(--sub);"></span>
+        </div>
+      </div>
+      <div class="card" style="font-size:0.78rem;color:var(--sub);">
+        <b style="color:var(--text);">How this works:</b>
+        When you approve a school, the system checks which term is currently active for that school's state
+        and sets the subscription expiry to the end of that term (or the end of the Nth term if they paid multiple).
+        If no calendar is set for a state, it falls back to 3 months per term.
+        <br><br>
+        <b style="color:var(--text);">To edit:</b> Select a state → change the dates → tap Save Dates.
+        Changes take effect immediately for new approvals.
       </div>
     </section>
 
