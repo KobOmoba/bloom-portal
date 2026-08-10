@@ -92,22 +92,6 @@ async function doLogin(){
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
   const errEl=$('l-err'); errEl.style.display='none';
 
-  // EMERGENCY ACCESS — pure client-side check, zero network calls of any
-  // kind (no Firebase Auth, no Firestore). Added 2026-08-03 after repeated
-  // lockouts where BOTH Firebase Auth and the Firestore backup password
-  // failed to load. This always works regardless of connection state.
-  // Change this string any time from inside this file — it's just a
-  // plain comparison, nothing stored remotely to go stale or be unreachable.
-  if(pwd === 'AariNAT-Emergency-2026!'){
-    localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    SQ.ping();
-    await initAdmin();
-    btn.textContent='🔓 Enter'; btn.disabled=false;
-    return;
-  }
-
   // Try real Firebase Auth first (own project, no third party involved).
   try{
     await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
@@ -552,7 +536,7 @@ async function confirmApproval(){
     });
   } catch(writeErr) {
     const errMsg = writeErr?.code === 'permission-denied'
-      ? 'Permission denied — you may need to log in with the main password instead of Emergency Access.'
+      ? 'Permission denied — your login session may have expired. Logout and log back in with aarinat2024.'
       : (writeErr?.message || String(writeErr));
     alert(`⚠️ APPROVAL FAILED — deal not updated.\n\n${errMsg}\n\n📋 WRITE THESE DOWN:\nSchool ID: ${schoolId}\nPassword: ${password}\n\nFix the connection issue and click "Re-Apply Approval" on this deal.`);
     // Store the schoolId on the deal so the stuck-deal banner appears
