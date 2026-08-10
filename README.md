@@ -1,3 +1,15 @@
+## 2026-08-10 — Emergency password removed
+
+The portal emergency password fallback (used briefly during the rules
+incident to restore access) has been removed. Portal login now uses the
+standard path only: `aarinat2024` checked against Firestore
+`admin_settings/main.adminPassword` (with hardcoded `aarinat2024` as
+the in-code fallback if Firestore is unreachable).
+
+Emergency access mode is no longer present in the codebase.
+
+---
+
 # bloom-portal
 
 ## 📍 Current Position — 2026-08-10
