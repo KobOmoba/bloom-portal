@@ -630,3 +630,16 @@ in `admin_approved_schools/{schoolId}` for new approvals going forward.
 - **Update README after every action, same session, no exceptions**
 - No auth/access-control changes without Bayo explicitly requesting them
 - aarinat2024 is the one and only portal password. No hardcoded bypasses.
+
+
+---
+
+## 2026-08-10 — Strategic Decision: Basic Tier Eliminated
+
+**Bayo's decision:** Basic tier completely eliminated. All schools are now Premium.
+New slogan: **GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE**
+
+No portal-side code changes required for this decision — the portal's tier structure
+(Starter 1–50, Small 51–100, Medium 101–200, Large 201–350, Enterprise 351+) represents
+pricing bands for the single Premium product, not a Basic vs Premium split.
+These pricing tiers remain unchanged.
