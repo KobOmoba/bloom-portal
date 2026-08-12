@@ -643,3 +643,24 @@ No portal-side code changes required for this decision — the portal's tier str
 (Starter 1–50, Small 51–100, Medium 101–200, Large 201–350, Enterprise 351+) represents
 pricing bands for the single Premium product, not a Basic vs Premium split.
 These pricing tiers remain unchanged.
+
+
+---
+
+## 2026-08-12 — Premium Prices Applied to Portal
+
+### Files changed
+- **`portal_app.js`** — `TIERS` array in `renderApprovedList()` updated to Premium prices
+  (used for over-tier detection, renewal calculation, and commission display)
+- **Demo deal seed** — updated from `Small (51–100) ₦20,000` to `Premium · 51–100 ₦30,000`
+
+| Tier | Basic (old) | Premium (new) |
+|---|---|---|
+| 1–50 | ₦10,000 | ₦15,000 |
+| 51–100 | ₦20,000 | ₦30,000 |
+| 101–200 | ₦35,000 | ₦52,500 |
+| 201–350 | ₦55,000 | ₦82,500 |
+| 351+ | ₦75,000 | ₦112,500 |
+
+### Commit
+- `e5d1e7b` — portal_app.js: TIERS + demo deal to Premium pricing
