@@ -172,7 +172,7 @@ async function initAdmin(){
     // demo pending deal
     const deals=await db.collection('admin_deals').get();
     if(deals.empty){
-      await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:20},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Small (51–100)',price:20000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
+      await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:20},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Premium · 51–100',price:30000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
     }
   }catch(e){console.warn('seed:',e);}
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
@@ -867,11 +867,11 @@ async function renderApproved(){
   if(!schools.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">No approved schools.</p>';return;}
 
   const TIERS=[
-    {max:50,  price:10000, name:'Starter (1–50)'},
-    {max:100, price:20000, name:'Small (51–100)'},
-    {max:200, price:35000, name:'Medium (101–200)'},
-    {max:350, price:55000, name:'Large (201–350)'},
-    {max:9999,price:75000, name:'Enterprise (351+)'}
+    {max:50,  price:15000,  name:'Premium · 1–50'},
+    {max:100, price:30000,  name:'Premium · 51–100'},
+    {max:200, price:52500,  name:'Premium · 101–200'},
+    {max:350, price:82500,  name:'Premium · 201–350'},
+    {max:9999,price:112500, name:'Premium · 351+'}
   ];
   function getTierByMax(max){ return TIERS.find(t=>t.max>=max)||TIERS[TIERS.length-1]; }
 
