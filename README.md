@@ -708,3 +708,21 @@ Each request card shows:
 ### Firestore collections used
 - `admin_agent_requests` — pending/approved/rejected agent applications
 - `admin_agents` — existing collection, now also written to by approval flow
+
+
+---
+
+## 2026-08-12 — Portal: Agent Request Cards Show Photo + Bank Details
+
+**`portal_app.js` (`9ec0faf`):**
+
+`renderAgentRequests()` — each card now shows:
+- Agent's face photo (52px circle) if submitted; 👤 placeholder if not
+- Name, phone, state as before
+- Green "💳 Commission Account" block: bank name · account number + bold account name
+- Yellow "⚠️ No bank details provided" warning if bank fields missing
+
+`approveAgentRequest()` — now:
+1. Fetches full request doc from Firestore (to get photo + bank details, which weren't in the onclick params)
+2. Saves to `admin_agents`: `{name, phone, state, commission:20, active:true, photo, bankName, acctNum, acctName, approvedFrom:'agent_request', requestId}`
+3. WhatsApp welcome message to new agent now includes their registered bank details as confirmation
