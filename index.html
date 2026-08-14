@@ -71,7 +71,7 @@
     <button class="on" data-t="dashboard" onclick="go('dashboard')">📊 Dashboard</button>
     <button data-t="pending" onclick="go('pending')">🔄 Pending <span id="pending-badge" class="nb">0</span></button>
     <button data-t="approved" onclick="go('approved')">✅ Approved</button>
-    <button data-t="agents" onclick="go('agents')">👥 Agents</button>
+    <button data-t="agents" onclick="go('agents')">👥 Agents <span id="agent-req-badge" class="nb" style="display:none;">0</span></button>
     <button data-t="ledger" onclick="go('ledger')">💰 Ledger</button>
     <button data-t="opps" onclick="go('opps')">🔍 Opportunities</button>
     <button data-t="settings" onclick="go('settings')">⚙️ Settings</button>
@@ -124,24 +124,21 @@
 
     <!-- AGENTS -->
     <section id="sec-agents" class="sec">
+      <!-- Pending Agent Requests -->
+      <div id="agent-requests-card" class="card" style="display:none;border-left:3px solid #f59e0b;margin-bottom:0.65rem;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+          <div class="ct" style="margin:0;">📬 Pending Agent Requests</div>
+          <span id="agent-req-count" style="font-size:0.72rem;font-weight:700;background:rgba(245,158,11,0.15);color:#f59e0b;padding:2px 8px;border-radius:12px;"></span>
+        </div>
+        <p style="font-size:0.78rem;color:var(--sub);margin-bottom:0.65rem;">People who applied to become EduBloom agents. Approve to create their account instantly — they can log in immediately.</p>
+        <div id="agent-requests-list"></div>
+      </div>
       <div class="card">
-        <div class="ct">👥 Agents</div>
-        <button class="btn-b" style="width:auto;margin-bottom:0.75rem;" onclick="openM('add-agent-modal')">➕ Add Agent</button>
+        <div class="ct">👥 Active Agents</div>
+        <button class="btn-b" style="width:auto;margin-bottom:0.75rem;" onclick="openM('add-agent-modal')">➕ Add Agent Manually</button>
         <div id="agents-list"></div>
       </div>
-      <div class="card">
-        <div class="ct">📊 Performance</div>
-        <div class="twrap">
-          <table>
-            <thead><tr><th>Agent</th><th>Phone</th><th>Deals</th><th>Commission</th><th>Status</th></tr></thead>
-            <tbody id="agent-perf-body"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- LEDGER -->
-    <section id="sec-ledger" class="sec">
+ id="sec-ledger" class="sec">
       <div class="card">
         <div class="ct">💰 Commission Ledger</div>
         <div class="twrap">
