@@ -149,7 +149,7 @@ function go(tab){
   const btn=document.querySelector(`[data-t="${tab}"]`);if(btn)btn.classList.add('on');
   if(tab==='dashboard') renderDashboard();
   if(tab==='approved')  renderApproved();
-  if(tab==='agents')    renderAgents();
+  if(tab==='agents')    { renderAgents(); } // agent-requests-list already live via listener
   if(tab==='ledger')    renderLedger();
   if(tab==='opps')      renderOpps();
   if(tab==='settings')  loadSettings();
@@ -177,6 +177,7 @@ async function initAdmin(){
   }catch(e){console.warn('seed:',e);}
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
   getTermCalendar().catch(()=>{}); // pre-warm calendar cache so first approval calculates expiry correctly
+  startAgentRequestsListener();    // real-time badge + list for new agent requests
   await renderDashboard();
   startPendingListener();
   go('dashboard');
@@ -1002,6 +1003,131 @@ async function copyC(schoolId){
     const txt=`School ID: ${s.schoolId}\nPassword: ${s.password}\nPortal: https://school.edubloom.com.ng`;
     navigator.clipboard.writeText(txt).then(()=>alert('✅ Copied!')).catch(()=>prompt('Copy:',txt));
   }catch(e){}
+}
+
+// ── Agent Requests ────────────────────────────────────────────────────────
+let _agentReqUnsub = null;
+
+function startAgentRequestsListener(){
+  if(_agentReqUnsub) return; // already listening
+  if(!db) return;
+  _agentReqUnsub = db.collection('admin_agent_requests')
+    .where('status','==','pending')
+    .orderBy('submittedAt','desc')
+    .onSnapshot(snap => {
+      const requests = snap.docs.map(d => ({id: d.id, ...d.data()}));
+      renderAgentRequests(requests);
+    }, e => console.warn('Agent requests listener error:', e.message));
+}
+
+function renderAgentRequests(requests){
+  const card    = $('agent-requests-card');
+  const list    = $('agent-requests-list');
+  const badge   = $('agent-req-badge');
+  const counter = $('agent-req-count');
+  if(!card || !list) return;
+
+  if(!requests.length){
+    card.style.display = 'none';
+    if(badge)  { badge.style.display = 'none'; badge.textContent = '0'; }
+    if(counter) counter.textContent = '';
+    return;
+  }
+
+  card.style.display = 'block';
+  if(badge)  { badge.style.display = 'inline-block'; badge.textContent = requests.length; }
+  if(counter) counter.textContent  = requests.length + ' pending';
+
+  list.innerHTML = requests.map(r => {
+    const ts = r.submittedAt?.toDate ? r.submittedAt.toDate() : new Date(r.submittedAt);
+    const timeLabel = ts ? ts.toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+    return `<div class="deal pend" style="border-left:3px solid #f59e0b;margin-bottom:0.65rem;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <span class="chip" style="background:#f59e0b;color:#fff;font-size:0.62rem;">NEW AGENT</span>
+        <span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${timeLabel}</span>
+      </div>
+      <div class="dn">${esc(r.name)}</div>
+      <div class="dm">📱 ${esc(r.phone)} · 📍 ${esc(r.state||'—')}</div>
+      ${r.source?`<div class="dm" style="font-style:italic;">Source: ${esc(r.source)}</div>`:''}
+      <div class="dact" style="margin-top:0.5rem;">
+        <button class="btn-g btn-sm" onclick="approveAgentRequest('${r.id}','${esc(r.name)}','${esc(r.phone)}','${esc(r.state||'')}')">✅ Approve</button>
+        <button class="btn-d btn-sm" onclick="rejectAgentRequest('${r.id}','${esc(r.name)}','${esc(r.phone)}')">❌ Reject</button>
+        <button class="btn-ghost btn-sm" onclick="window.open('https://wa.me/${r.phone}','_blank')">💬 WhatsApp</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function approveAgentRequest(reqId, name, phone, state){
+  if(!confirm(`Approve ${name} (${phone}) as an EduBloom agent in ${state||'—'}?\n\nThis will create their account immediately — they can log in right away.`)) return;
+
+  try {
+    // 1. Create agent account in admin_agents
+    const agentData = {
+      name, phone, state: state||'',
+      commission: 20,
+      joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      approvedFrom: 'agent_request',
+      requestId: reqId,
+      active: true,
+    };
+    await db.collection('admin_agents').add(agentData);
+
+    // 2. Mark request as approved
+    await db.collection('admin_agent_requests').doc(reqId).update({
+      status: 'approved',
+      approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 3. Refresh agents list
+    renderAgents();
+
+    // 4. WhatsApp welcome message to new agent
+    const welcomeMsg =
+`🌸 *Welcome to EduBloom, ${name}!*
+
+Your agent account has been approved by Bayo (AariNAT Company).
+
+*To get started:*
+1. Go to: agent.edubloom.com.ng
+2. Tap "Login"
+3. Enter your phone number: *${phone}*
+
+You will earn *20% commission* on every school you sign up.
+
+GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE 💜
+
+– AariNAT Company Limited`;
+
+    window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(welcomeMsg)}`, '_blank');
+    log(`✅ Approved agent: ${name} (${phone})`);
+
+  } catch(e) {
+    alert('Approval failed: ' + (e.message || e));
+    console.error('approveAgentRequest error:', e);
+  }
+}
+
+async function rejectAgentRequest(reqId, name, phone){
+  const reason = prompt(`Reason for rejecting ${name}? (optional — will be sent via WhatsApp if entered)`,'');
+  if(reason === null) return; // cancelled
+
+  try {
+    await db.collection('admin_agent_requests').doc(reqId).update({
+      status: 'rejected',
+      rejectedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      rejectionReason: reason || '',
+    });
+
+    if(reason){
+      const msg = `Hello ${name}, thank you for your interest in becoming an EduBloom agent.\n\nUnfortunately we cannot approve your request at this time.\n\n${reason ? 'Reason: ' + reason + '\n\n' : ''}You are welcome to reapply in the future.\n\n– AariNAT Company`;
+      window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+    }
+
+    log(`❌ Rejected agent request: ${name} (${phone})`);
+  } catch(e) {
+    alert('Rejection failed: ' + (e.message || e));
+  }
 }
 
 // ── Agents ─────────────────────────────────────────────────────────────────
