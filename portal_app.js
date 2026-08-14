@@ -1041,18 +1041,31 @@ function renderAgentRequests(requests){
   list.innerHTML = requests.map(r => {
     const ts = r.submittedAt?.toDate ? r.submittedAt.toDate() : new Date(r.submittedAt);
     const timeLabel = ts ? ts.toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+    const photoHtml = r.photo
+      ? `<img src="${r.photo}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--brand);flex-shrink:0;">`
+      : `<div style="width:52px;height:52px;border-radius:50%;background:var(--s2);border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">👤</div>`;
     return `<div class="deal pend" style="border-left:3px solid #f59e0b;margin-bottom:0.65rem;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-        <span class="chip" style="background:#f59e0b;color:#fff;font-size:0.62rem;">NEW AGENT</span>
-        <span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${timeLabel}</span>
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;">
+        ${photoHtml}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+            <span class="chip" style="background:#f59e0b;color:#fff;font-size:0.62rem;">NEW AGENT</span>
+            <span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${timeLabel}</span>
+          </div>
+          <div class="dn">${esc(r.name)}</div>
+          <div class="dm">📱 ${esc(r.phone)} · 📍 ${esc(r.state||'—')}</div>
+          ${r.source?`<div class="dm" style="font-style:italic;font-size:0.72rem;">Source: ${esc(r.source)}</div>`:''}
+        </div>
       </div>
-      <div class="dn">${esc(r.name)}</div>
-      <div class="dm">📱 ${esc(r.phone)} · 📍 ${esc(r.state||'—')}</div>
-      ${r.source?`<div class="dm" style="font-style:italic;">Source: ${esc(r.source)}</div>`:''}
-      <div class="dact" style="margin-top:0.5rem;">
+      ${(r.bankName||r.acctNum)?`<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:7px 10px;font-size:0.75rem;margin-bottom:8px;">
+        <div style="font-weight:700;color:#22c55e;margin-bottom:2px;">💳 Commission Account</div>
+        <div>${esc(r.bankName||'—')} · ${esc(r.acctNum||'—')}</div>
+        <div style="font-weight:700;">${esc(r.acctName||'—')}</div>
+      </div>`:'<div style="font-size:0.72rem;color:#f59e0b;margin-bottom:8px;">⚠️ No bank details provided</div>'}
+      <div class="dact" style="margin-top:0.25rem;">
         <button class="btn-g btn-sm" onclick="approveAgentRequest('${r.id}','${esc(r.name)}','${esc(r.phone)}','${esc(r.state||'')}')">✅ Approve</button>
         <button class="btn-d btn-sm" onclick="rejectAgentRequest('${r.id}','${esc(r.name)}','${esc(r.phone)}')">❌ Reject</button>
-        <button class="btn-ghost btn-sm" onclick="window.open('https://wa.me/${r.phone}','_blank')">💬 WhatsApp</button>
+        <button class="btn-ghost btn-sm" onclick="window.open('https://wa.me/${r.phone.replace(/\D/g,'')}','_blank')">💬 WhatsApp</button>
       </div>
     </div>`;
   }).join('');
@@ -1062,27 +1075,35 @@ async function approveAgentRequest(reqId, name, phone, state){
   if(!confirm(`Approve ${name} (${phone}) as an EduBloom agent in ${state||'—'}?\n\nThis will create their account immediately — they can log in right away.`)) return;
 
   try {
-    // 1. Create agent account in admin_agents
+    // Fetch full request doc to get photo + bank details
+    const reqDoc = await db.collection('admin_agent_requests').doc(reqId).get();
+    const r = reqDoc.exists ? reqDoc.data() : {};
+
+    // 1. Create agent in admin_agents with photo + bank details
     const agentData = {
       name, phone, state: state||'',
-      commission: 20,
-      joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      commission:   20,
+      joinedAt:     firebase.firestore.FieldValue.serverTimestamp(),
       approvedFrom: 'agent_request',
-      requestId: reqId,
-      active: true,
+      requestId:    reqId,
+      active:       true,
+      photo:        r.photo    || '',
+      bankName:     r.bankName || '',
+      acctNum:      r.acctNum  || '',
+      acctName:     r.acctName || '',
     };
     await db.collection('admin_agents').add(agentData);
 
-    // 2. Mark request as approved
+    // 2. Mark request approved
     await db.collection('admin_agent_requests').doc(reqId).update({
-      status: 'approved',
+      status:     'approved',
       approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 3. Refresh agents list
+    // 3. Refresh active agents list
     renderAgents();
 
-    // 4. WhatsApp welcome message to new agent
+    // 4. WhatsApp welcome to new agent — includes bank confirmation
     const welcomeMsg =
 `🌸 *Welcome to EduBloom, ${name}!*
 
@@ -1091,12 +1112,12 @@ Your agent account has been approved by Bayo (AariNAT Company).
 *To get started:*
 1. Go to: agent.edubloom.com.ng
 2. Tap "Login"
-3. Enter your phone number: *${phone}*
+3. Enter your number: *${phone}*
 
-You will earn *20% commission* on every school you sign up.
+You earn *20% commission* on every approved school, paid to:
+🏦 ${r.bankName||'your bank'} · ${r.acctNum||'—'} · ${r.acctName||''}
 
 GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE 💜
-
 – AariNAT Company Limited`;
 
     window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(welcomeMsg)}`, '_blank');
@@ -1107,6 +1128,7 @@ GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE 💜
     console.error('approveAgentRequest error:', e);
   }
 }
+
 
 async function rejectAgentRequest(reqId, name, phone){
   const reason = prompt(`Reason for rejecting ${name}? (optional — will be sent via WhatsApp if entered)`,'');
