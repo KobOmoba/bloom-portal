@@ -664,3 +664,47 @@ These pricing tiers remain unchanged.
 
 ### Commit
 - `e5d1e7b` — portal_app.js: TIERS + demo deal to Premium pricing
+
+
+---
+
+## 2026-08-12 — Portal: Agent Requests Real-Time System
+
+### What was built
+
+**`portal_app.js` (`54e88d0`):**
+
+`startAgentRequestsListener()`:
+- Called on `initAdmin()` — starts immediately at login
+- `onSnapshot` listener on `admin_agent_requests` where `status == 'pending'` ordered by `submittedAt` desc
+- Fires `renderAgentRequests(requests)` on every change
+
+`renderAgentRequests(requests)`:
+- If 0 requests: hides card, hides nav badge
+- If 1+ requests: shows card, updates nav badge (amber, shows count), renders each request card
+
+Each request card shows:
+- Name, phone, state, source, submission timestamp
+- ✅ Approve | ❌ Reject | 💬 WhatsApp buttons
+
+`approveAgentRequest(reqId, name, phone, state)`:
+1. Confirms with Bayo (dialog)
+2. Creates agent in `admin_agents`: `{name, phone, state, commission:20, joinedAt, approvedFrom:'agent_request', requestId, active:true}`
+3. Marks request `status:'approved'` in `admin_agent_requests`
+4. Calls `renderAgents()` to refresh the active agents list
+5. Opens WhatsApp to new agent with welcome message including login URL and their phone number
+
+`rejectAgentRequest(reqId, name, phone)`:
+1. Prompts Bayo for optional rejection reason
+2. Marks request `status:'rejected'` in `admin_agent_requests`
+3. If reason provided: opens WhatsApp to applicant with polite rejection + reason
+
+**`index.html` (`4b3f7d1`):**
+- `👥 Agents` nav button now has amber badge (`agent-req-badge`) showing pending count
+- `sec-agents` section now has "📬 Pending Agent Requests" card at the top
+  (hidden when no requests, shown automatically when requests arrive via listener)
+- Existing agent management (Add/Edit/Delete) unchanged — relabelled "Active Agents"
+
+### Firestore collections used
+- `admin_agent_requests` — pending/approved/rejected agent applications
+- `admin_agents` — existing collection, now also written to by approval flow
