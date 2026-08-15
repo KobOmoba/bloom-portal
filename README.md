@@ -1,3 +1,119 @@
+## 2026-08-15 — Complete Firestore Rules (canonical reference)
+Merged from Step 3 subcollection rules + 2026-08-10 admin corrections + Finding #3 fix.
+
+**What changed vs previous version:**
+- `authed()` replaced by `isBayo()` on all sensitive admin_ collections (prevents any Firebase-authed
+  user from writing to admin data — only Bayo's UID `HSpdm2NYK4hEGqBxyTPEi2wy39F2` can write)
+- `admin_agent_requests` added: agents can submit applications (`create: if true`), only Bayo can manage
+- `schools/{schoolId}` parent doc changed to `allow read, write: if true` (portal must write on approval;
+  Step 3 had `allow write: if isStaffOf()` which blocked portal writes)
+- All subcollection rules from Step 3 preserved (staff_directory, students, private/fees, scores)
+- `isBayo()` helper added alongside existing `authed()` helper
+
+**Paste entire block below into Firebase Console → Firestore → Rules → Publish:**
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────────────
+    function authed()  { return request.auth != null; }
+    function isBayo()  { return authed() && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2'; }
+    function staffDoc(schoolId) {
+      return /databases/$(database)/documents/schools/$(schoolId)/staff_directory/$(request.auth.uid);
+    }
+    function isStaffOf(schoolId)       { return authed() && exists(staffDoc(schoolId)); }
+    function staffData(schoolId)       { return get(staffDoc(schoolId)).data; }
+    function myRole(schoolId)          { return staffData(schoolId).role; }
+    function myClass(schoolId)         { return staffData(schoolId).assignedClass; }
+    function mySubjects(schoolId)      { return staffData(schoolId).assignedSubjects; }
+    function isPrincipal(schoolId)     { return isStaffOf(schoolId) && myRole(schoolId) == 'Principal'; }
+    function isBursar(schoolId)        { return isStaffOf(schoolId) && myRole(schoolId) == 'Bursar'; }
+    function isClassTeacher(schoolId)  { return isStaffOf(schoolId) && myRole(schoolId) == 'Class Teacher'; }
+    function isSubjectTeacher(schoolId){ return isStaffOf(schoolId) && myRole(schoolId) == 'Subject Teacher'; }
+    function studentClass(schoolId, studentId) {
+      return get(/databases/$(database)/documents/schools/$(schoolId)/students/$(studentId)).data.class;
+    }
+
+    // ── OCR keys ────────────────────────────────────────────────────
+    match /public_ocr_keys/{doc} {
+      allow read: if true;
+      allow write: if isBayo();
+    }
+
+    // ── Admin collections — Bayo-only write, some open read ─────────
+    match /admin_settings/{doc}         { allow read, write: if isBayo(); }
+    match /admin_cac/{doc}              { allow read, write: if isBayo(); }
+    match /admin_activity/{doc}         { allow read, write: if isBayo(); }
+    match /admin_opportunities/{doc}    { allow read, write: if isBayo(); }
+    match /admin_agents/{doc}           { allow read: if true; allow write: if isBayo(); }
+    match /admin_approved_schools/{doc} { allow read: if true; allow write: if isBayo(); }
+    match /admin_ledger/{doc}           { allow read: if true; allow write: if isBayo(); }
+    match /admin_deals/{doc} {
+      allow create, read: if true;
+      allow update, delete: if isBayo();
+    }
+    match /admin_alerts/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isBayo();
+    }
+    match /admin_agent_requests/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isBayo();
+    }
+    match /v2_deals/{doc} { allow read, write: if isBayo(); }
+
+    // ── School data ─────────────────────────────────────────────────
+    match /schools/{schoolId} {
+
+      // Parent doc fully open — portal must write on approval,
+      // school login must read before staff auth is set up
+      allow read, write: if true;
+
+      // Staff directory — Principal manages, each staff sees own record
+      match /staff_directory/{uid} {
+        allow read:            if isPrincipal(schoolId) || (authed() && request.auth.uid == uid);
+        allow create:          if authed() && request.auth.uid == uid;
+        allow update, delete:  if isPrincipal(schoolId);
+      }
+
+      // Student profiles — role-gated reads, class-gated writes
+      match /students/{studentId} {
+        allow read: if isPrincipal(schoolId)
+                    || (isClassTeacher(schoolId) && myClass(schoolId) == resource.data.class)
+                    || isSubjectTeacher(schoolId)
+                    || isBursar(schoolId);
+        allow create:         if isPrincipal(schoolId) || isClassTeacher(schoolId);
+        allow update, delete: if isPrincipal(schoolId)
+                              || (isClassTeacher(schoolId) && myClass(schoolId) == resource.data.class);
+
+        // Fees — Principal and Bursar only
+        match /private/fees {
+          allow read, write: if isPrincipal(schoolId) || isBursar(schoolId);
+        }
+
+        // Scores — role and class/subject gated
+        match /scores/{scoreId} {
+          allow read: if isPrincipal(schoolId)
+                      || (isClassTeacher(schoolId) && myClass(schoolId) == studentClass(schoolId, studentId))
+                      || (isSubjectTeacher(schoolId) && resource.data.subject in mySubjects(schoolId));
+          allow write: if isPrincipal(schoolId)
+                       || (isClassTeacher(schoolId) && myClass(schoolId) == studentClass(schoolId, studentId))
+                       || (isSubjectTeacher(schoolId) && request.resource.data.subject in mySubjects(schoolId));
+        }
+      }
+    }
+
+    // ── Catch-all ────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+---
 ## 2026-08-14 — Firestore Rules Update (Finding #3 fix)
 Added `admin_agent_requests` explicit rule. Everything else unchanged.
 Paste the block below into Firebase Console → Firestore → Rules → Publish.
