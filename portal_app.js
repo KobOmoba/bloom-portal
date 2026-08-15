@@ -70,8 +70,7 @@ window._flushSQ = ()=>SQ.run();;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const $=id=>document.getElementById(id);
-const esc=s=>{if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/'/g,"&#39;");};
-async function _sha256(str){const e=new TextEncoder().encode(str);const b=await crypto.subtle.digest('SHA-256',e);return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
+const esc=s=>{if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
 const fmt=n=>'₦'+Number(n||0).toLocaleString('en-NG');
 const openM=id=>$(id).classList.add('on');
 const closeM=id=>$(id).classList.remove('on');
@@ -167,7 +166,7 @@ async function initAdmin(){
       await db.collection('admin_agents').add({name:'Grace Okonkwo',phone:'2348098765432',commission:20,joinedAt:new Date()});
     }
     const sd=await db.collection('admin_settings').doc('main').get();
-    if(!sd.exists)await db.collection('admin_settings').doc('main').set({adminPassword:'aarinat2024',defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Educational Bloom!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
+    if(!sd.exists)await db.collection('admin_settings').doc('main').set({adminPassword:'aarinat2024',defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Edu-BLOOM!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
     const cac=await db.collection('admin_cac').doc('progress').get();
     if(!cac.exists)await db.collection('admin_cac').doc('progress').set({raised:0});
     // demo pending deal
@@ -523,14 +522,7 @@ async function openApproveModal(dealId){
 async function confirmApproval(){
   if(!approvalData)return;
   const{id,deal,schoolId,password}=approvalData;
-  // Security fix #2: re-validate commission against admin_agents (blocks localStorage inflation attack)
-  let _commRate=20;
-  try{
-    const _aSn=await db.collection('admin_agents').where('phone','==',deal.agent?.phone||'').limit(1).get();
-    if(!_aSn.empty) _commRate=Math.min(_aSn.docs[0].data().commission||20,30);
-    else _commRate=Math.min(deal.agent?.commission||20,30);
-  }catch(_e){_commRate=Math.min(deal.agent?.commission||20,30);}
-  const commission=Math.round((deal.tier?.price||0)*(_commRate/100)*(deal.terms||1));
+  const commission=Math.round((deal.tier?.price||0)*((deal.agent?.commission||20)/100)*(deal.terms||1));
   const TS = firebase.firestore.FieldValue.serverTimestamp;
 
   // ── STEP 1 (CRITICAL): Mark deal approved — DIRECT write, NOT through SQ
@@ -590,8 +582,6 @@ async function confirmApproval(){
     SQ.push({t:'addSchoolRecord',id:schoolId,d:{...schoolRecord, approvedAt:now, activatedAt:now}});
   }
   // 3. Create actual school account — DIRECT write so portal login works immediately
-  // Security fix #1: hash password before writing to publicly-readable schools document
-  const hashedPwd = await _sha256(password);
   const schoolDoc = {
     config:{
       plan:'basic',fee:50000,
@@ -610,7 +600,7 @@ async function confirmApproval(){
         agentId:deal.agent?.id||''
       }
     },
-    staff:[{name:'Principal',email:deal.school?.email||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:hashedPwd,role:'Principal',phone:deal.school?.phone||''}],
+    staff:[{name:'Principal',email:deal.school?.email||(schoolId.toLowerCase()+'@bloom.edu.ng'),password,role:'Principal',phone:deal.school?.phone||''}],
     students: (deal.scannedStudents||[]).map((s,i)=>({
       id: 'S' + String(i+1).padStart(4,'0'),
       name: s.name || s,
@@ -725,7 +715,7 @@ async function viewExpiredSchools() {
 // Send renewal reminder via WhatsApp to agent (not principal — agent collects)
 function sendRenewalReminder(schoolId, schoolName, agentPhone, principalPhone, daysLeft) {
   const agentMsg = encodeURIComponent(
-    `⏰ *EduBloom Renewal Alert*\n\n` +
+    `⏰ *Edu-BLOOM Renewal Alert*\n\n` +
     `*${schoolName}* (${schoolId}) expires in *${daysLeft} day${daysLeft===1?'':'s'}*.\n\n` +
     `Please collect the renewal fee and send payment confirmation to Bayo.\n\n` +
     `Tier renewal → contact: wa.me/2348145073941`
@@ -770,7 +760,7 @@ async function repairSchool(schoolId) {
     const s = snap.docs[0].data();
     const schoolDoc = {
       config:{plan:'basic',fee:50000,schoolName:s.schoolName||'',principalEmail:s.principalEmail||'',whatsapp:s.principalPhone||'',createdAt:new Date().toISOString()},
-      staff:[{name:'Principal',email:s.principalEmail||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:await _sha256(s.password||''),role:'Principal',phone:s.principalPhone||''}],
+      staff:[{name:'Principal',email:s.principalEmail||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:s.password,role:'Principal',phone:s.principalPhone||''}],
       students: (deal.scannedStudents||[]).map((s,i)=>({
       id: 'S' + String(i+1).padStart(4,'0'),
       name: s.name || s,
@@ -985,7 +975,7 @@ async function resetPrincipalPassword(schoolId, schoolName, principalPhone){
     renderApproved();
 
     if(confirm(`✅ New password: ${newPwd}\n\nSend it to the Principal via WhatsApp now?`)){
-      const msg = `Hello,\n\nYour EduBloom school password has been reset.\n\nSchool ID: ${schoolId}\nNew Password: ${newPwd}\n\nLogin at: https://school.edubloom.com.ng\n\n– AariNAT Admin`;
+      const msg = `Hello,\n\nYour Edu-BLOOM school password has been reset.\n\nSchool ID: ${schoolId}\nNew Password: ${newPwd}\n\nLogin at: https://school.edubloom.com.ng\n\n– AariNAT Admin`;
       window.open(`https://wa.me/${(principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
     }
   }catch(e){
@@ -1051,71 +1041,368 @@ function renderAgentRequests(requests){
   list.innerHTML = requests.map(r => {
     const ts = r.submittedAt?.toDate ? r.submittedAt.toDate() : new Date(r.submittedAt);
     const timeLabel = ts ? ts.toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '—';
+    const photoHtml = r.photo
+      ? `<img src="${r.photo}" style="width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--brand);flex-shrink:0;">`
+      : `<div style="width:52px;height:52px;border-radius:50%;background:var(--s2);border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;">👤</div>`;
     return `<div class="deal pend" style="border-left:3px solid #f59e0b;margin-bottom:0.65rem;">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-        <span class="chip" style="background:#f59e0b;color:#fff;font-size:0.62rem;">NEW AGENT</span>
-        <span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${timeLabel}</span>
+      <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;">
+        ${photoHtml}
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px;">
+            <span class="chip" style="background:#f59e0b;color:#fff;font-size:0.62rem;">NEW AGENT</span>
+            <span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${timeLabel}</span>
+          </div>
+          <div class="dn">${esc(r.name)}</div>
+          <div class="dm">📱 ${esc(r.phone)} · 📍 ${esc(r.state||'—')}</div>
+          ${r.source?`<div class="dm" style="font-style:italic;font-size:0.72rem;">Source: ${esc(r.source)}</div>`:''}
+        </div>
       </div>
-      <div class="dn">${esc(r.name)}</div>
-      <div class="dm">📱 ${esc(r.phone)} · 📍 ${esc(r.state||'—')}</div>
-      ${r.source?`<div class="dm" style="font-style:italic;">Source: ${esc(r.source)}</div>`:''}
-      <div class="dact" style="margin-top:0.5rem;">
+      ${(r.bankName||r.acctNum)?`<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;padding:7px 10px;font-size:0.75rem;margin-bottom:8px;">
+        <div style="font-weight:700;color:#22c55e;margin-bottom:2px;">💳 Commission Account</div>
+        <div>${esc(r.bankName||'—')} · ${esc(r.acctNum||'—')}</div>
+        <div style="font-weight:700;">${esc(r.acctName||'—')}</div>
+      </div>`:'<div style="font-size:0.72rem;color:#f59e0b;margin-bottom:8px;">⚠️ No bank details provided</div>'}
+      <div class="dact" style="margin-top:0.25rem;">
         <button class="btn-g btn-sm" onclick="approveAgentRequest('${r.id}','${esc(r.name)}','${esc(r.phone)}','${esc(r.state||'')}')">✅ Approve</button>
         <button class="btn-d btn-sm" onclick="rejectAgentRequest('${r.id}','${esc(r.name)}','${esc(r.phone)}')">❌ Reject</button>
-        <button class="btn-ghost btn-sm" onclick="window.open('https://wa.me/${r.phone}','_blank')">💬 WhatsApp</button>
+        <button class="btn-ghost btn-sm" onclick="window.open('https://wa.me/${r.phone.replace(/\D/g,'')}','_blank')">💬 WhatsApp</button>
       </div>
     </div>`;
   }).join('');
 }
 
 async function approveAgentRequest(reqId, name, phone, state){
-  if(!confirm(`Approve ${name} (${phone}) as an EduBloom agent in ${state||'—'}?\n\nThis will create their account immediately — they can log in right away.`)) return;
+  if(!confirm(`Approve ${name} (${phone}) as an Edu-BLOOM agent in ${state||'—'}?\n\nThis will create their account immediately — they can log in right away.`)) return;
 
   try {
-    // 1. Create agent account in admin_agents
+    // Fetch full request doc to get photo + bank details
+    const reqDoc = await db.collection('admin_agent_requests').doc(reqId).get();
+    const r = reqDoc.exists ? reqDoc.data() : {};
+
+    // 1. Create agent in admin_agents with photo + bank details
     const agentData = {
       name, phone, state: state||'',
-      commission: 20,
-      joinedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      commission:   20,
+      joinedAt:     firebase.firestore.FieldValue.serverTimestamp(),
       approvedFrom: 'agent_request',
-      requestId: reqId,
-      active: true,
+      requestId:    reqId,
+      active:       true,
+      photo:        r.photo    || '',
+      bankName:     r.bankName || '',
+      acctNum:      r.acctNum  || '',
+      acctName:     r.acctName || '',
     };
-    await db.collection('admin_agents').add(agentData);
+    const agentRef = await db.collection('admin_agents').add(agentData);
+    const agentDocId = agentRef.id;
 
-    // 2. Mark request as approved
+    // 2. Mark request approved
     await db.collection('admin_agent_requests').doc(reqId).update({
-      status: 'approved',
+      status:     'approved',
       approvedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 3. Refresh agents list
+    // 3. Refresh active agents list
     renderAgents();
 
-    // 4. WhatsApp welcome message to new agent
+    // 4. WhatsApp welcome to new agent — includes bank confirmation
     const welcomeMsg =
-`🌸 *Welcome to EduBloom, ${name}!*
+`🌸 *Welcome to Edu-BLOOM, ${name}!*
 
 Your agent account has been approved by Bayo (AariNAT Company).
 
 *To get started:*
 1. Go to: agent.edubloom.com.ng
 2. Tap "Login"
-3. Enter your phone number: *${phone}*
+3. Enter your number: *${phone}*
 
-You will earn *20% commission* on every school you sign up.
+You earn *20% commission* on every approved school, paid to:
+🏦 ${r.bankName||'your bank'} · ${r.acctNum||'—'} · ${r.acctName||''}
 
 GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE 💜
-
 – AariNAT Company Limited`;
 
     window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(welcomeMsg)}`, '_blank');
     log(`✅ Approved agent: ${name} (${phone})`);
+    // Auto-generate and show the agent's ID card
+    setTimeout(() => showAgentIDCard({ name, phone, state: state||'', photo: r.photo||'', bankName: r.bankName||'', acctNum: r.acctNum||'', acctName: r.acctName||'' }, agentDocId), 600);
 
   } catch(e) {
     alert('Approval failed: ' + (e.message || e));
     console.error('approveAgentRequest error:', e);
   }
+}
+
+
+// ── Agent ID Card Generator ───────────────────────────────────────────────
+function generateAgentIDCard(agent, docId) {
+  return new Promise(resolve => {
+    const W = 856, H = 540;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // ── Background gradient (deep purple) ──────────────────────────────
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0,   '#0f0a2e');
+    bg.addColorStop(0.5, '#1e1254');
+    bg.addColorStop(1,   '#0a0621');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Gold top stripe ────────────────────────────────────────────────
+    const goldGrad = ctx.createLinearGradient(0, 0, W, 0);
+    goldGrad.addColorStop(0,   '#b8860b');
+    goldGrad.addColorStop(0.4, '#ffd700');
+    goldGrad.addColorStop(0.7, '#f59e0b');
+    goldGrad.addColorStop(1,   '#b8860b');
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(0, 0, W, 8);
+
+    // ── Gold bottom stripe ─────────────────────────────────────────────
+    ctx.fillStyle = goldGrad;
+    ctx.fillRect(0, H - 8, W, 8);
+
+    // ── Subtle grid pattern overlay ────────────────────────────────────
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 30) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 30) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+    // ── Left accent bar ────────────────────────────────────────────────
+    const leftBar = ctx.createLinearGradient(0, 0, 0, H);
+    leftBar.addColorStop(0,   '#7c3aed');
+    leftBar.addColorStop(0.5, '#a855f7');
+    leftBar.addColorStop(1,   '#7c3aed');
+    ctx.fillStyle = leftBar;
+    ctx.fillRect(0, 8, 6, H - 16);
+
+    // ── Edu-BLOOM logo (purple 'Edu-' + orange 'BLOOM' — matches real logo) ─
+    ctx.font = 'bold 30px Georgia, serif';
+    ctx.fillStyle = '#7c3aed';   // purple — matches 'Edu-' in the real Edu-BLOOM logo
+    ctx.fillText('Edu-', 30, 57);
+    ctx.fillStyle = '#f97316';   // orange — matches 'BLOOM' in the real Edu-BLOOM logo
+    ctx.fillText('BLOOM', 30 + ctx.measureText('Edu-').width, 57);
+
+    ctx.font = '11px Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText('edubloom.com.ng', 30, 74);
+
+    // ── "BLOOM AGENT" badge (top right) ───────────────────────────────
+    const badgeX = W - 210, badgeY = 22, badgeW = 175, badgeH = 36;
+    ctx.fillStyle = 'rgba(245,158,11,0.18)';
+    roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 8);
+    ctx.fill();
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, badgeX, badgeY, badgeW, badgeH, 8);
+    ctx.stroke();
+    ctx.font = 'bold 15px Arial, sans-serif';
+    ctx.fillStyle = '#f59e0b';
+    ctx.textAlign = 'center';
+    ctx.fillText('🌸  BLOOM AGENT', badgeX + badgeW / 2, badgeY + 24);
+    ctx.textAlign = 'left';
+
+    // ── Agent ID chip ──────────────────────────────────────────────────
+    const agentId = 'AGENT-' + (docId || '').toUpperCase().slice(0, 6);
+    ctx.font = 'bold 12px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText('ID: ' + agentId, W - 210, 82);
+
+    // ── Photo circle ───────────────────────────────────────────────────
+    const photoX = 60, photoY = 115, photoR = 100;
+    // Outer glow ring
+    ctx.save();
+    ctx.shadowColor = '#a855f7';
+    ctx.shadowBlur = 20;
+    ctx.strokeStyle = '#7c3aed';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(photoX + photoR, photoY + photoR, photoR + 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    // Gold ring
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(photoX + photoR, photoY + photoR, photoR + 2, 0, Math.PI * 2);
+    ctx.stroke();
+    // Clip and draw photo (or placeholder)
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(photoX + photoR, photoY + photoR, photoR, 0, Math.PI * 2);
+    ctx.clip();
+    if (agent.photo) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, photoX, photoY, photoR * 2, photoR * 2);
+        finishCard(ctx, canvas, agent, agentId, W, H, photoX, photoY, photoR, goldGrad, resolve);
+      };
+      img.onerror = () => {
+        drawPhotoPlaceholder(ctx, photoX + photoR, photoY + photoR, photoR);
+        ctx.restore();
+        finishCard(ctx, canvas, agent, agentId, W, H, photoX, photoY, photoR, goldGrad, resolve);
+      };
+      img.src = agent.photo;
+    } else {
+      drawPhotoPlaceholder(ctx, photoX + photoR, photoY + photoR, photoR);
+      ctx.restore();
+      finishCard(ctx, canvas, agent, agentId, W, H, photoX, photoY, photoR, goldGrad, resolve);
+    }
+  });
+}
+
+function drawPhotoPlaceholder(ctx, cx, cy, r) {
+  ctx.fillStyle = '#2d1b69';
+  ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  ctx.font = `${r}px Arial`;
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('👤', cx, cy);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function finishCard(ctx, canvas, agent, agentId, W, H, photoX, photoY, photoR, goldGrad) {
+  const textX = photoX + photoR * 2 + 40;
+
+  // ── Divider line ──────────────────────────────────────────────────────
+  ctx.strokeStyle = 'rgba(245,158,11,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(textX - 15, 105);
+  ctx.lineTo(W - 30, 105);
+  ctx.stroke();
+
+  // ── Name ──────────────────────────────────────────────────────────────
+  ctx.font = 'bold 34px Arial, sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
+  // Handle long names — scale down if needed
+  let fontSize = 34;
+  while (ctx.measureText(agent.name.toUpperCase()).width > W - textX - 30 && fontSize > 20) {
+    fontSize -= 2;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  }
+  ctx.fillText(agent.name.toUpperCase(), textX, 155);
+
+  // ── Separator under name ──────────────────────────────────────────────
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillRect(textX, 165, 60, 3);
+
+  // ── Detail rows ───────────────────────────────────────────────────────
+  const details = [
+    { icon: '🪪', label: 'Agent ID',   value: agentId },
+    { icon: '📱', label: 'WhatsApp',   value: agent.phone },
+    { icon: '📍', label: 'Territory',  value: (agent.state || '—') + ' State' },
+    { icon: '💰', label: 'Commission', value: '20% per school' },
+  ];
+  let dy = 200;
+  details.forEach(d => {
+    ctx.font = '12px Arial, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText(d.label.toUpperCase(), textX, dy);
+    ctx.font = 'bold 16px Arial, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(d.icon + '  ' + d.value, textX, dy + 20);
+    dy += 52;
+  });
+
+  // ── Commission bank details box ───────────────────────────────────────
+  if (agent.bankName || agent.acctNum) {
+    const bx = 30, by = H - 130, bw = W - 60, bh = 50;
+    ctx.fillStyle = 'rgba(124,58,237,0.2)';
+    roundRect(ctx, bx, by, bw, bh, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(124,58,237,0.5)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, bx, by, bw, bh, 8);
+    ctx.stroke();
+    ctx.font = 'bold 11px Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('COMMISSION ACCOUNT', bx + 14, by + 17);
+    ctx.font = 'bold 14px Arial';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`${agent.bankName || '—'}   ·   ${agent.acctNum || '—'}   ·   ${agent.acctName || '—'}`, bx + 14, by + 38);
+  }
+
+  // ── Slogan + footer ───────────────────────────────────────────────────
+  ctx.font = 'italic 13px Georgia, serif';
+  ctx.fillStyle = 'rgba(245,158,11,0.75)';
+  ctx.textAlign = 'center';
+  ctx.fillText('GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE', W / 2, H - 48);
+
+  ctx.font = '11px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('AariNAT Company Limited  ·  agent.edubloom.com.ng  ·  +234 814 507 3941', W / 2, H - 28);
+  ctx.textAlign = 'left';
+
+  return canvas;
+}
+
+async function showAgentIDCard(agent, docId) {
+  const canvas = await generateAgentIDCard(agent, docId);
+  const dataUrl = canvas.toDataURL('image/png');
+
+  // Build or reuse the ID card modal
+  let modal = $('agent-id-card-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'agent-id-card-modal';
+    modal.className = 'modal';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div class="mbox" style="max-width:900px;width:95vw;padding:1.25rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem;">
+        <div style="font-weight:800;font-size:1rem;">🪪 Agent ID Card — ${esc(agent.name)}</div>
+        <button onclick="closeM('agent-id-card-modal')" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--sub);">✕</button>
+      </div>
+      <img src="${dataUrl}" style="width:100%;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);display:block;margin-bottom:0.75rem;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <a href="${dataUrl}" download="Edu-BLOOM_Agent_${agent.name.replace(/\s+/g,'_')}.png"
+          style="flex:1;min-width:140px;">
+          <button class="btn-brand" style="width:100%;">⬇️ Download PNG</button>
+        </a>
+        <button class="btn-ghost" style="flex:1;min-width:140px;" onclick="printAgentIDCard('${dataUrl}')">🖨️ Print</button>
+        <button class="btn-ghost" style="flex:1;min-width:140px;" onclick="closeM('agent-id-card-modal')">✕ Close</button>
+      </div>
+      <p style="font-size:0.72rem;color:var(--sub);margin-top:0.65rem;text-align:center;">
+        Right-click the card → Save Image As to save. Forward the PNG to the agent via WhatsApp.
+      </p>
+    </div>`;
+  modal.classList.add('on');
+}
+
+function printAgentIDCard(dataUrl) {
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Agent ID Card</title>
+    <style>body{margin:0;background:#000;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+    img{max-width:100%;border-radius:10px;}@media print{body{background:#fff;}}</style></head>
+    <body><img src="${dataUrl}" onload="window.print();"></body></html>`);
+  win.document.close();
+}
+
+// View ID card for any existing agent from the agents list
+async function viewAgentIDCard(agentId) {
+  try {
+    const doc = await db.collection('admin_agents').doc(agentId).get();
+    if (!doc.exists) return alert('Agent not found.');
+    showAgentIDCard(doc.data(), agentId);
+  } catch(e) { alert('Could not load agent: ' + e.message); }
 }
 
 async function rejectAgentRequest(reqId, name, phone){
@@ -1130,7 +1417,7 @@ async function rejectAgentRequest(reqId, name, phone){
     });
 
     if(reason){
-      const msg = `Hello ${name}, thank you for your interest in becoming an EduBloom agent.\n\nUnfortunately we cannot approve your request at this time.\n\n${reason ? 'Reason: ' + reason + '\n\n' : ''}You are welcome to reapply in the future.\n\n– AariNAT Company`;
+      const msg = `Hello ${name}, thank you for your interest in becoming an Edu-BLOOM agent.\n\nUnfortunately we cannot approve your request at this time.\n\n${reason ? 'Reason: ' + reason + '\n\n' : ''}You are welcome to reapply in the future.\n\n– AariNAT Company`;
       window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
     }
 
@@ -1159,7 +1446,8 @@ function renderAgentsFromData(agents, ledger, deals){
     :agents.map(a=>{
       const earned=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
       const paid=ledger.filter(l=>l.agent===a.name&&l.paid).reduce((s,l)=>s+(l.amount||0),0);
-      return`<div class="deal" style="border-left:3px solid var(--brand);">\n        <div class="dn">${esc(a.name)}</div>\n        <div class="dm">📱 ${a.phone} · Commission rate: ${a.commission||20}%</div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">\n          <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>\n          <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>\n          <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>\n        </div>\n      </div>`;
+      const photoHtml=a.photo?`<img src="${esc(a.photo)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--brand);flex-shrink:0;">` :`<div style="width:40px;height:40px;border-radius:50%;background:var(--s2);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">👤</div>`;
+      return`<div class="deal" style="border-left:3px solid var(--brand);">\n        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">${photoHtml}<div style="flex:1;min-width:0;"><div class="dn">${esc(a.name)}</div><div class="dm">📱 ${a.phone} · 📍 ${esc(a.state||'—')} · ${a.commission||20}% commission</div></div></div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        ${a.bankName?`<div class="dm" style="font-size:0.72rem;color:var(--sub);">🏦 ${esc(a.bankName)} · ${esc(a.acctNum||'—')} · ${esc(a.acctName||'—')}</div>`:''}\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">\n          <button class="btn-w btn-sm" onclick="viewAgentIDCard('${a.id}')">🪪 ID Card</button>\n          <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>\n          <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>\n          <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>\n        </div>\n      </div>`;
     }).join('');
   $('agent-perf-body').innerHTML=agents.map(a=>{
     const d=deals.filter(x=>x.agent?.name===a.name).length;
@@ -1234,7 +1522,7 @@ async function saveAgent(){
     const exampleComm = Math.round(10000 * rate / 100).toLocaleString('en-NG');
     const activationMsg =
       `*Hello ${name}!* 🌸\n\n` +
-      `You have been registered as an *Educational Bloom* agent by AariNAT.\n\n` +
+      `You have been registered as an *Edu-BLOOM* agent by AariNAT.\n\n` +
       `*Your login:*\n` +
       `📱 Phone (login key): *${localPhone}*\n\n` +
       `*Agent App link:*\n` +
@@ -1245,7 +1533,7 @@ async function saveAgent(){
       `3. Enter your number: *${localPhone}*\n\n` +
       `For every school you sign up, you earn commission — e.g. ₦${exampleComm} per Starter school.\n\n` +
       `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
-      `_Educational Bloom by AariNAT_`;
+      `_Edu-BLOOM by AariNAT_`;
 
     if(confirm(`✅ Agent "${name}" added!\n\nSend them a WhatsApp activation message now?\n(They need this to know how to log in.)`)){
       window.open(`https://wa.me/${phone}?text=${encodeURIComponent(activationMsg)}`,'_blank');
@@ -1267,14 +1555,14 @@ function resendAgentActivation(agentId){
   const exampleComm = Math.round(10000 * (a.commission||20) / 100).toLocaleString('en-NG');
   const msg =
     `*Hello ${a.name}!* 🌸\n\n` +
-    `Reminder of your *Educational Bloom* agent login:\n\n` +
+    `Reminder of your *Edu-BLOOM* agent login:\n\n` +
     `📱 Your login key (phone): *${localPhone}*\n\n` +
     `*Agent App:*\n` +
     `${AGENT_APP_URL}\n\n` +
     `Open the link → tap Login → enter *${localPhone}*\n\n` +
     `Commission: ₦${exampleComm} per Starter school, more for bigger schools.\n\n` +
     `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
-    `_Educational Bloom by AariNAT_`;
+    `_Edu-BLOOM by AariNAT_`;
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
