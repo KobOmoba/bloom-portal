@@ -726,3 +726,48 @@ Each request card shows:
 1. Fetches full request doc from Firestore (to get photo + bank details, which weren't in the onclick params)
 2. Saves to `admin_agents`: `{name, phone, state, commission:20, active:true, photo, bankName, acctNum, acctName, approvedFrom:'agent_request', requestId}`
 3. WhatsApp welcome message to new agent now includes their registered bank details as confirmation
+
+
+---
+
+## 2026-08-12 — Agent ID Card Auto-Generated on Approval
+
+### What was built (`portal_app.js` — commit `684f1eb`)
+
+**`generateAgentIDCard(agent, docId)`** — Canvas-based ID card (856×540px, ~credit card ratio):
+
+Design:
+- Deep purple gradient background (#0f0a2e → #1e1254 → #0a0621)
+- Gold stripe top and bottom (linear gradient b8860b → ffd700 → f59e0b)
+- Subtle grid overlay
+- Left purple accent bar
+- **"EduBloom"** logo in white + gold (top left)
+- **"🌸 BLOOM AGENT"** badge with gold border (top right)
+- Agent ID chip: `AGENT-XXXXXX` (first 6 chars of Firestore doc ID)
+- **Agent photo** in a 100px circle with gold ring + purple glow shadow
+  - If no photo: grey placeholder with 👤 icon
+  - Photo drawn asynchronously, card completes via `finishCard()` callback
+- Agent **name in caps** (font scales down if name is too long)
+- Gold underline separator below name
+- Four detail rows: 🪪 Agent ID · 📱 WhatsApp · 📍 Territory · 💰 Commission (20%)
+- Commission account box (purple tint): Bank · Account Number · Account Name
+- Gold italic slogan: *GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE*
+- Footer: AariNAT Company Limited · agent.edubloom.com.ng · +234 814 507 3941
+
+**`showAgentIDCard(agent, docId)`** — shows card in a modal:
+- Full-width card image preview
+- ⬇️ Download PNG (filename: `EduBloom_Agent_David_Adeyemi.png`)
+- 🖨️ Print (opens new window, prints, closes)
+- ✕ Close
+- Tip: "Right-click → Save Image As. Forward via WhatsApp."
+
+**`printAgentIDCard(dataUrl)`** — opens print-optimised page
+
+**`viewAgentIDCard(agentId)`** — fetches agent from Firestore and shows card; available on every agent row in the active agents list via 🪪 ID Card button
+
+**Auto-triggered:** `approveAgentRequest()` now calls `showAgentIDCard()` 600ms after approval so Bayo sees the card immediately and can download/print/forward it to the new agent right away.
+
+**Agent list cards** now show:
+- 40px photo avatar (or 👤 placeholder)
+- State and bank details
+- 🪪 ID Card button (first button in the action row)
