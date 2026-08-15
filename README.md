@@ -1,3 +1,105 @@
+## 2026-08-15 — Final Hardened Firestore Rules (paste this into Firebase Console)
+
+Two changes from the previous version:
+1. `admin_approved_schools` — reads now locked to Bayo UID only (was `allow read: if true`)
+2. Catch-all — changed from `allow read, write: if true` to `allow read, write: if false`
+   (anything not explicitly listed is now BLOCKED by default, not open by default)
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────────────
+    function authed()  { return request.auth != null; }
+    function isBayo()  { return authed() && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2'; }
+    function staffDoc(schoolId) {
+      return /databases/$(database)/documents/schools/$(schoolId)/staff_directory/$(request.auth.uid);
+    }
+    function isStaffOf(schoolId)       { return authed() && exists(staffDoc(schoolId)); }
+    function staffData(schoolId)       { return get(staffDoc(schoolId)).data; }
+    function myRole(schoolId)          { return staffData(schoolId).role; }
+    function myClass(schoolId)         { return staffData(schoolId).assignedClass; }
+    function mySubjects(schoolId)      { return staffData(schoolId).assignedSubjects; }
+    function isPrincipal(schoolId)     { return isStaffOf(schoolId) && myRole(schoolId) == 'Principal'; }
+    function isBursar(schoolId)        { return isStaffOf(schoolId) && myRole(schoolId) == 'Bursar'; }
+    function isClassTeacher(schoolId)  { return isStaffOf(schoolId) && myRole(schoolId) == 'Class Teacher'; }
+    function isSubjectTeacher(schoolId){ return isStaffOf(schoolId) && myRole(schoolId) == 'Subject Teacher'; }
+    function studentClass(schoolId, studentId) {
+      return get(/databases/$(database)/documents/schools/$(schoolId)/students/$(studentId)).data.class;
+    }
+
+    // ── OCR keys ────────────────────────────────────────────────────
+    match /public_ocr_keys/{doc} {
+      allow read: if true;
+      allow write: if isBayo();
+    }
+
+    // ── Admin collections ────────────────────────────────────────────
+    match /admin_settings/{doc}         { allow read, write: if isBayo(); }
+    match /admin_cac/{doc}              { allow read, write: if isBayo(); }
+    match /admin_activity/{doc}         { allow read, write: if isBayo(); }
+    match /admin_opportunities/{doc}    { allow read, write: if isBayo(); }
+    match /admin_agents/{doc}           { allow read: if true; allow write: if isBayo(); }
+    match /admin_approved_schools/{doc} { allow read, write: if isBayo(); }
+    match /admin_ledger/{doc}           { allow read: if true; allow write: if isBayo(); }
+    match /admin_deals/{doc} {
+      allow create, read: if true;
+      allow update, delete: if isBayo();
+    }
+    match /admin_alerts/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isBayo();
+    }
+    match /admin_agent_requests/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isBayo();
+    }
+    match /v2_deals/{doc} { allow read, write: if isBayo(); }
+
+    // ── School data ─────────────────────────────────────────────────
+    match /schools/{schoolId} {
+      allow read, write: if true;
+
+      match /staff_directory/{uid} {
+        allow read:            if isPrincipal(schoolId) || (authed() && request.auth.uid == uid);
+        allow create:          if authed() && request.auth.uid == uid;
+        allow update, delete:  if isPrincipal(schoolId);
+      }
+
+      match /students/{studentId} {
+        allow read: if isPrincipal(schoolId)
+                    || (isClassTeacher(schoolId) && myClass(schoolId) == resource.data.class)
+                    || isSubjectTeacher(schoolId)
+                    || isBursar(schoolId);
+        allow create:         if isPrincipal(schoolId) || isClassTeacher(schoolId);
+        allow update, delete: if isPrincipal(schoolId)
+                              || (isClassTeacher(schoolId) && myClass(schoolId) == resource.data.class);
+
+        match /private/fees {
+          allow read, write: if isPrincipal(schoolId) || isBursar(schoolId);
+        }
+
+        match /scores/{scoreId} {
+          allow read: if isPrincipal(schoolId)
+                      || (isClassTeacher(schoolId) && myClass(schoolId) == studentClass(schoolId, studentId))
+                      || (isSubjectTeacher(schoolId) && resource.data.subject in mySubjects(schoolId));
+          allow write: if isPrincipal(schoolId)
+                       || (isClassTeacher(schoolId) && myClass(schoolId) == studentClass(schoolId, studentId))
+                       || (isSubjectTeacher(schoolId) && request.resource.data.subject in mySubjects(schoolId));
+        }
+      }
+    }
+
+    // ── Default deny — nothing reaches here by accident ──────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+---
 ## 2026-08-15 — Complete Firestore Rules (canonical reference)
 Merged from Step 3 subcollection rules + 2026-08-10 admin corrections + Finding #3 fix.
 
