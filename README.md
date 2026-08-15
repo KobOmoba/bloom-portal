@@ -1,3 +1,60 @@
+## 2026-08-14 — Firestore Rules Update (Finding #3 fix)
+Added `admin_agent_requests` explicit rule. Everything else unchanged.
+Paste the block below into Firebase Console → Firestore → Rules → Publish.
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /admin_settings/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /public_ocr_keys/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_cac/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_activity/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_opportunities/{docId} {
+      allow read, write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_ledger/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_agents/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_approved_schools/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_deals/{docId} {
+      allow create: if true;
+      allow read: if true;
+      allow update, delete: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_alerts/{docId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /admin_agent_requests/{docId} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+---
 ## 2026-08-14 — Security Fixes (Post-Pentest)
 Pentest conducted across all three sandboxes. Three code fixes applied to ALL six repos
 (production + sandbox) simultaneously.
