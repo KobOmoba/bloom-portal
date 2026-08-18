@@ -620,7 +620,14 @@ async function confirmApproval(){
     SQ.push({t:'createSchool',id:schoolId,d:schoolDoc});
   }
   // 4. Commission ledger entry
+  // Only write commission if agent is still active
+  const agentDoc = await db.collection('admin_agents').doc(deal.agent?.id||'_').get().catch(()=>null);
+  const agentIsActive = !agentDoc || !agentDoc.exists || agentDoc.data()?.active !== false;
+  if(agentIsActive){
   SQ.push({t:'addLedger',id:id+'_comm',d:{dealId:id,schoolId,agent:deal.agent?.name,agentPhone:deal.agent?.phone,amount:commission,paid:false,date:new Date()}});
+  } else {
+    log(`⚠️ Commission skipped — agent ${deal.agent?.name} is deactivated`);
+  }
   // 5. CAC allocation
   try{
     const sd=await db.collection('admin_settings').doc('main').get();
@@ -1447,12 +1454,27 @@ function renderAgentsFromData(agents, ledger, deals){
       const earned=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
       const paid=ledger.filter(l=>l.agent===a.name&&l.paid).reduce((s,l)=>s+(l.amount||0),0);
       const photoHtml=a.photo?`<img src="${esc(a.photo)}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--brand);flex-shrink:0;">` :`<div style="width:40px;height:40px;border-radius:50%;background:var(--s2);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">👤</div>`;
-      return`<div class="deal" style="border-left:3px solid var(--brand);">\n        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">${photoHtml}<div style="flex:1;min-width:0;"><div class="dn">${esc(a.name)}</div><div class="dm">📱 ${a.phone} · 📍 ${esc(a.state||'—')} · ${a.commission||20}% commission</div></div></div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        ${a.bankName?`<div class="dm" style="font-size:0.72rem;color:var(--sub);">🏦 ${esc(a.bankName)} · ${esc(a.acctNum||'—')} · ${esc(a.acctName||'—')}</div>`:''}\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">\n          <button class="btn-w btn-sm" onclick="viewAgentIDCard('${a.id}')">🪪 ID Card</button>\n          <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>\n          <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>\n          <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>\n        </div>\n      </div>`;
+      const isDeactivated = a.active === false;
+      const deactReason = a.deactivationReason || 'deactivated';
+      const deactLabel = deactReason==='resigned'?'Resigned':deactReason==='dismissed'?'Dismissed':deactReason==='fraud'?'🚨 FRAUD':'Deactivated';
+      const borderColor = isDeactivated ? (deactReason==='fraud'?'#ef4444':'#f59e0b') : 'var(--brand)';
+      const cardStyle = isDeactivated ? 'opacity:0.6;' : '';
+      const statusBadge = isDeactivated
+        ? `<span style="background:${deactReason==='fraud'?'#7f1d1d':'#78350f'};color:${deactReason==='fraud'?'#fca5a5':'#fcd34d'};border-radius:5px;padding:2px 8px;font-size:0.68rem;font-weight:800;letter-spacing:0.08em;margin-left:8px;">🚫 ${deactLabel.toUpperCase()}</span>` : '';
+      const actionBtns = isDeactivated
+        ? `<button class="btn-w btn-sm" onclick="reactivateAgent('${a.id}','${esc(a.name)}')">✅ Reactivate</button>
+           <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Delete Record</button>`
+        : `<button class="btn-w btn-sm" onclick="viewAgentIDCard('${a.id}')">🪪 ID Card</button>
+           <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>
+           <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>
+           <button class="btn-sm" style="background:#f59e0b;color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="deactivateAgent('${a.id}','${esc(a.name)}')">🚫 Deactivate</button>
+           <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>`;
+      return`<div class="deal" style="border-left:3px solid ${borderColor};${cardStyle}">\n        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">${photoHtml}<div style="flex:1;min-width:0;"><div class="dn">${esc(a.name)}${statusBadge}</div><div class="dm">📱 ${a.phone} · 📍 ${esc(a.state||'—')} · ${a.commission||20}% commission</div></div></div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        ${a.bankName?`<div class="dm" style="font-size:0.72rem;color:var(--sub);">🏦 ${esc(a.bankName)} · ${esc(a.acctNum||'—')} · ${esc(a.acctName||'—')}</div>`:''}\n        ${isDeactivated?`<div class="dm" style="font-size:0.72rem;color:#f87171;margin-top:2px;">🚫 Deactivated ${a.deactivatedAt?.toDate?a.deactivatedAt.toDate().toLocaleDateString():''} · Commission HALTED</div>`:''}\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">${actionBtns}</div>\n      </div>`;
     }).join('');
   $('agent-perf-body').innerHTML=agents.map(a=>{
     const d=deals.filter(x=>x.agent?.name===a.name).length;
     const comm=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
-    return`<tr>\n      <td>${esc(a.name)}</td>\n      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${a.phone}</td>\n      <td>${d}</td>\n      <td style="color:var(--money);font-weight:700;">${fmt(comm)}</td>\n      <td><span class="chip ca" style="position:static;">Active</span></td>\n    </tr>`;
+    return`<tr>\n      <td>${esc(a.name)}</td>\n      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${a.phone}</td>\n      <td>${d}</td>\n      <td style="color:var(--money);font-weight:700;">${fmt(comm)}</td>\n      <td><span class="chip ${a.active===false?'cr':'ca'}" style="position:static;">${a.active===false?(a.deactivationReason==='fraud'?'🚨 FRAUD':a.deactivationReason==='resigned'?'Resigned':'Dismissed'):'Active'}</span></td>\n    </tr>`;
   }).join('');
 }
 
@@ -1596,22 +1618,86 @@ async function recordRenewal(schoolId, schoolName, agentName, agentPhone, tierPr
   renderLedger();
 }
 
-// ── Agent Edit / Delete ────────────────────────────────────────────────────
+// ── Agent Deactivation / Reactivation / Delete ───────────────────────────
+async function deactivateAgent(id, name){
+  const reason = prompt(
+    `Deactivate "${name}"?\n\nEnter reason:\n  resigned  — agent resigned voluntarily\n  dismissed — agent was dismissed\n  fraud     — agent committed fraud\n\nType one word:`,
+    'dismissed'
+  );
+  if(!reason) return;
+  const r = reason.trim().toLowerCase();
+  if(!['resigned','dismissed','fraud'].includes(r)){
+    alert('Invalid reason. Use: resigned, dismissed, or fraud');
+    return;
+  }
+  const label = r==='resigned'?'Resigned':r==='dismissed'?'Dismissed':'🚨 FRAUD';
+  if(!confirm(`Deactivate ${name} (${label})?\n\nThis will:\n• Block app login immediately\n• Halt all future commission payments${r==='fraud'?'\n• Flag all their pending deals for review':''}`))return;
+
+  try{
+    const update = {
+      active: false,
+      status: 'deactivated',
+      deactivatedAt: new Date(),
+      deactivationReason: r
+    };
+    await db.collection('admin_agents').doc(id).update(update);
+
+    // If fraud — flag all pending deals by this agent
+    if(r === 'fraud'){
+      const snap = await db.collection('admin_deals')
+        .where('agent.id','==',id)
+        .where('status','==','pending')
+        .get();
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.update(d.ref, {
+        status: 'flagged_fraud',
+        fraudFlaggedAt: new Date(),
+        fraudNote: `Agent ${name} deactivated for fraud on ${new Date().toLocaleDateString()}`
+      }));
+      if(!snap.empty) await batch.commit();
+      alert(`✅ ${name} deactivated.\n\n⚠️ ${snap.size} pending deal(s) flagged for fraud review.`);
+    }
+
+    _agentsCache = _agentsCache.map(a => a.id===id ? {...a,...update} : a);
+    saveAgentsCache(_agentsCache);
+    renderAgentsFromData(_agentsCache,[],[]);
+    renderAgents();
+    log(`🚫 Deactivated agent: ${name} · Reason: ${r}`);
+  }catch(e){ alert('Error deactivating: '+e.message); }
+}
+
+async function reactivateAgent(id, name){
+  if(!confirm(`Reactivate "${name}"?\n\nThis will restore their app access and allow commission payments.`))return;
+  try{
+    const update = {
+      active: true,
+      status: 'active',
+      reactivatedAt: new Date(),
+      deactivationReason: firebase.firestore.FieldValue.delete(),
+      deactivatedAt: firebase.firestore.FieldValue.delete()
+    };
+    await db.collection('admin_agents').doc(id).update(update);
+    _agentsCache = _agentsCache.map(a => a.id===id ? {...a, active:true, status:'active', deactivationReason:undefined, deactivatedAt:undefined} : a);
+    saveAgentsCache(_agentsCache);
+    renderAgentsFromData(_agentsCache,[],[]);
+    renderAgents();
+    log(`✅ Reactivated agent: ${name}`);
+  }catch(e){ alert('Error reactivating: '+e.message); }
+}
+
 async function deleteAgent(id, name){
-  if(!confirm(`Remove agent "${name}"? This cannot be undone.`))return;
+  if(!confirm(`Permanently delete agent "${name}"?\n\nThis removes all records. Cannot be undone.\n\nTip: Use Deactivate instead if you want to keep the record.`))return;
   try{
     if(db&&navigator.onLine){
       await db.collection('admin_agents').doc(id).delete();
     } else {
-      // Queue delete for when back online
       SQ.push({t:'deleteAgent',id});
     }
-    // Remove from memory cache immediately regardless
     _agentsCache=_agentsCache.filter(a=>a.id!==id);
     renderAgentsFromData(_agentsCache,[],[]);
     renderAgents();
     renderDashboard();
-    log(`🗑️ Removed agent: ${name}`);
+    log(`🗑️ Deleted agent record: ${name}`);
   }catch(e){alert('Error: '+e.message);}
 }
 
