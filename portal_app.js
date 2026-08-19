@@ -1891,7 +1891,7 @@ async function saveSettings(){
   const groqKey5=groqRaw5.startsWith('gsk_')&&groqRaw5.length>20?groqRaw5:'';
   const newAdminPwd=($('s-adminpwd')?.value||'').trim();
   if(newAdminPwd && newAdminPwd.length<4) return alert('Backup admin password must be at least 4 characters.');
-  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),...(newAdminPwd?{adminPassword:newAdminPwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}}),...(groqKey2?{groqApiKey2:groqKey2}:{}),...(groqKey3?{groqApiKey3:groqKey3}:{}),...(groqKey4?{groqApiKey4:groqKey4}:{}),...(groqKey5?{groqApiKey5:groqKey5}:{})});
+  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(groqKey2?{groqApiKey2:groqKey2}:{}),...(groqKey3?{groqApiKey3:groqKey3}:{}),...(groqKey4?{groqApiKey4:groqKey4}:{}),...(groqKey5?{groqApiKey5:groqKey5}:{}),...(hfKey?{hfApiKey:hfKey}:{}),...(newAdminPwd?{adminPassword:newAdminPwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
   if(groqKey||hfKey) await syncOcrKeysToPublic();
   if($('s-adminpwd')) $('s-adminpwd').value='';
   alert('✅ Settings saved!');
