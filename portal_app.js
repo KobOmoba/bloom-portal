@@ -1863,6 +1863,12 @@ async function loadSettings(){
       if(d.whatsappTemplate)$('s-tpl').value=d.whatsappTemplate;
       if(d.geminiKey&&$('s-gemini'))$('s-gemini').value='●'.repeat(20)+' (set)';
       if(d.groqApiKey&&$('s-groq'))$('s-groq').value=d.groqApiKey.slice(0,6)+'••••••'+d.groqApiKey.slice(-4);
+      if(d.groqApiKey2&&$('s-groq-2'))$('s-groq-2').value=d.groqApiKey2.slice(0,6)+'••••••'+d.groqApiKey2.slice(-4);
+      if(d.groqApiKey3&&$('s-groq-3'))$('s-groq-3').value=d.groqApiKey3.slice(0,6)+'••••••'+d.groqApiKey3.slice(-4);
+      if(d.groqApiKey4&&$('s-groq-4'))$('s-groq-4').value=d.groqApiKey4.slice(0,6)+'••••••'+d.groqApiKey4.slice(-4);
+      if(d.groqApiKey5&&$('s-groq-5'))$('s-groq-5').value=d.groqApiKey5.slice(0,6)+'••••••'+d.groqApiKey5.slice(-4);
+      const activeCount=[d.groqApiKey,d.groqApiKey2,d.groqApiKey3,d.groqApiKey4,d.groqApiKey5].filter(k=>k&&k.startsWith('gsk_')).length;
+      const kcEl=$('groq-key-count'); if(kcEl) kcEl.textContent=activeCount+' key'+(activeCount===1?'':'s')+' active';
       if(d.hfApiKey&&$('s-hf'))$('s-hf').value=d.hfApiKey.slice(0,6)+'••••••'+d.hfApiKey.slice(-4);
       if(d.adminPassword&&$('s-adminpwd'))$('s-adminpwd').placeholder='●'.repeat(Math.min(d.adminPassword.length,12))+' (set — type to change)';
     }
@@ -1872,12 +1878,20 @@ async function loadSettings(){
 async function saveSettings(){
   const gk=($('s-gemini')?.value||'').replace(/●.*/,'').trim();
   const groqRaw=($('s-groq')?.value||'').trim();
+  const groqRaw2=($('s-groq-2')?.value||'').trim();
+  const groqRaw3=($('s-groq-3')?.value||'').trim();
+  const groqRaw4=($('s-groq-4')?.value||'').trim();
+  const groqRaw5=($('s-groq-5')?.value||'').trim();
   const hfRaw=($('s-hf')?.value||'').trim();
   const hfKey=hfRaw&&!hfRaw.includes('•')&&hfRaw.startsWith('hf_')&&hfRaw.length>20?hfRaw:null;
   const groqKey=groqRaw.startsWith('gsk_')&&groqRaw.length>20?groqRaw:'';
+  const groqKey2=groqRaw2.startsWith('gsk_')&&groqRaw2.length>20?groqRaw2:'';
+  const groqKey3=groqRaw3.startsWith('gsk_')&&groqRaw3.length>20?groqRaw3:'';
+  const groqKey4=groqRaw4.startsWith('gsk_')&&groqRaw4.length>20?groqRaw4:'';
+  const groqKey5=groqRaw5.startsWith('gsk_')&&groqRaw5.length>20?groqRaw5:'';
   const newAdminPwd=($('s-adminpwd')?.value||'').trim();
   if(newAdminPwd && newAdminPwd.length<4) return alert('Backup admin password must be at least 4 characters.');
-  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),...(newAdminPwd?{adminPassword:newAdminPwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(hfKey?{hfApiKey:hfKey}:{}),...(newAdminPwd?{adminPassword:newAdminPwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}}),...(groqKey2?{groqApiKey2:groqKey2}:{}),...(groqKey3?{groqApiKey3:groqKey3}:{}),...(groqKey4?{groqApiKey4:groqKey4}:{}),...(groqKey5?{groqApiKey5:groqKey5}:{})});
   if(groqKey||hfKey) await syncOcrKeysToPublic();
   if($('s-adminpwd')) $('s-adminpwd').value='';
   alert('✅ Settings saved!');
@@ -1891,16 +1905,33 @@ async function saveSettings(){
 // whenever a key is changed in Settings above.
 async function syncOcrKeysToPublic(silent){
   try{
-    const doc=await db.collection('admin_settings').doc('main').get();
-    if(!doc.exists){ if(!silent) alert('No settings found yet — add a Groq/HF key above first.'); return; }
-    const d=doc.data();
-    if(!d.groqApiKey&&!d.hfApiKey){ if(!silent) alert('No Groq/HF key set yet — add one above first.'); return; }
+    const doc = await db.collection('admin_settings').doc('main').get();
+    if(!doc.exists){if(!silent)alert('No settings doc yet.');return;}
+    const d = doc.data();
+    const hasAnyGroq = d.groqApiKey||d.groqApiKey2||d.groqApiKey3||d.groqApiKey4||d.groqApiKey5;
+    if(!hasAnyGroq&&!d.hfApiKey){
+      if(!silent) alert('No Groq or HF keys set yet — add at least one Groq key in Settings.');
+      return;
+    }
+    // Collect all active Groq keys into an array for the rotator
+    const groqKeys = [d.groqApiKey,d.groqApiKey2,d.groqApiKey3,d.groqApiKey4,d.groqApiKey5]
+      .filter(k => k && k.startsWith('gsk_'));
     await db.collection('public_ocr_keys').doc('main').set({
-      groqApiKey:d.groqApiKey||'', hfApiKey:d.hfApiKey||'', ocrServiceUrl:d.ocrServiceUrl||'', updatedAt:new Date()
-    },{merge:true});
-    log('🔄 OCR keys synced for agent app');
-  }catch(e){ if(!silent) alert('Sync failed: '+(e.message||e)); else console.warn('OCR key sync failed:',e.message); }
+      groqApiKey:  d.groqApiKey  || '',
+      groqApiKey2: d.groqApiKey2 || '',
+      groqApiKey3: d.groqApiKey3 || '',
+      groqApiKey4: d.groqApiKey4 || '',
+      groqApiKey5: d.groqApiKey5 || '',
+      groqKeys,                          // array format for GroqRotator
+      hfApiKey: d.hfApiKey || '',
+      ocrServiceUrl: d.ocrServiceUrl || '',
+      updatedAt: new Date(),
+      activeKeyCount: groqKeys.length
+    });
+    if(!silent) alert(`✅ Synced ${groqKeys.length} Groq key(s) + HF key to apps.`);
+  }catch(e){ if(!silent) alert('Sync error: '+e.message); }
 }
+
 
 async function exportAll(){
   try{
