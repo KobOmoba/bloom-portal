@@ -170,8 +170,36 @@
     <section id="sec-settings" class="sec">
       <div class="card">
         <div class="ct">⚙️ Settings</div>
-        <label>Groq API Key (OCR primary — stored in Firestore)</label>
-        <input type="text" id="s-groq" placeholder="gsk_... paste your Groq API key here">
+        <!-- Groq Key Rotation — up to 5 keys rotate round-robin -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <label style="margin:0;">Groq API Keys — Round-Robin Rotation</label>
+          <span id="groq-key-count" style="font-size:0.75rem;color:var(--money);font-weight:700;"></span>
+        </div>
+        <div style="display:grid;gap:6px;margin-bottom:4px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.72rem;color:var(--sub);min-width:44px;">Key 1</span>
+            <input type="text" id="s-groq" placeholder="gsk_… primary key" style="flex:1;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.72rem;color:var(--sub);min-width:44px;">Key 2</span>
+            <input type="text" id="s-groq-2" placeholder="gsk_… second key (optional)" style="flex:1;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.72rem;color:var(--sub);min-width:44px;">Key 3</span>
+            <input type="text" id="s-groq-3" placeholder="gsk_… third key (optional)" style="flex:1;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.72rem;color:var(--sub);min-width:44px;">Key 4</span>
+            <input type="text" id="s-groq-4" placeholder="gsk_… fourth key (optional)" style="flex:1;">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:0.72rem;color:var(--sub);min-width:44px;">Key 5</span>
+            <input type="text" id="s-groq-5" placeholder="gsk_… fifth key (optional)" style="flex:1;">
+          </div>
+        </div>
+        <div style="font-size:0.72rem;color:var(--sub);margin-bottom:0.5rem;line-height:1.5;">
+          Keys rotate automatically. When one hits its rate limit the next takes over instantly — no delay, no waiting. Add more keys from free Groq accounts to multiply throughput.
+        </div>
         <label style="margin-top:0.5rem;">HuggingFace API Key (OCR fallback when Groq fails)</label>
         <input type="text" id="s-hf" placeholder="hf_... paste your HuggingFace token here">
         <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:0.5rem;">Agents fetch this directly from Firestore now — no third-party proxy involved. Get a free key at <a href="https://console.groq.com" target="_blank">console.groq.com</a> → API Keys → Create.</div>
