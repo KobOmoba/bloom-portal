@@ -153,7 +153,7 @@ function go(tab){
   if(tab==='ledger')    renderLedger();
   if(tab==='opps')      renderOpps();
   if(tab==='settings')  loadSettings();
-  if(tab==='calendar'){ getTermCalendar().then(cal=>{ const sel=$('cal-state-select'); if(sel){ const states=Object.keys(cal).filter(s=>s!=='_default'); sel.innerHTML='<option value="_default">All States (Default)</option>'+states.map(s=>`<option value="${s}">${s}</option>`).join(''); } renderCalendarTable('_default',cal); }); }
+  if(tab==='calendar'){ getTermCalendar().then(cal=>{ const sel=$('cal-state-select'); if(sel){ const states=Object.keys(cal).filter(s=>s!=='_default'); sel.innerHTML='<option value="_default">All States (Default)</option>'+states.map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join(''); } renderCalendarTable('_default',cal); }); }
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
