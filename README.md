@@ -77,3 +77,13 @@ Expires after 8 hours — re-login required.
 Published Aug 19, 2026 at 7:10 AM. Rules are correct — no action needed.
 `admin_approved_schools` is Bayo-only (contains every school password).
 Run `repairSchool()` in portal for any school approved before the direct-write fix.
+---
+
+## Project Scope Document
+
+`EDUBLOOM_PROJECT_SCOPE.md` in this repo is the master scope document.
+It defines what is in scope, what is explicitly out of scope, the change order
+process and pricing, and the acceptance criteria for all three apps.
+
+Any feature request not listed in Section 2 of that document requires a formal
+Change Order before work begins.
