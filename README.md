@@ -97,3 +97,10 @@ Change Order before work begins.
 - Delivery monitoring: Google Postmaster Tools, Mailgun Analytics, MXToolbox, Mail-Tester
 - Deploy checklist before going live with email receipts
 - Firebase secrets required: PAYSTACK_SECRET_KEY, MAILGUN_API_KEY
+---
+
+## WhatsApp Receipt Setup
+
+`WHATSAPP_SETUP.md` in this repo is the step-by-step guide for setting up
+Termii WhatsApp Business API so BloomCollect sends automatic payment receipts
+to parents via WhatsApp. Includes everything Bayo needs to do, costs, and timelines.
