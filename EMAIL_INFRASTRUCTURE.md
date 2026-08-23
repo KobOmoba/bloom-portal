@@ -11,7 +11,7 @@ If receipts bounce, marketing reputation is unaffected.
 
 | Domain | Purpose | Provider | Volume |
 |--------|---------|----------|--------|
-| `pay.edubloom.com.ng` | Payment receipts, school activation confirmations | Mailgun | Transactional — low volume, must land in inbox |
+| `pay.edubloom.com.ng` | Payment receipts, school activation confirmations | Resend  | Transactional backup — WhatsApp is primary channel |
 | `hello.edubloom.com.ng` | Newsletter, product updates, school tips | Brevo | Marketing — higher volume, unsubscribe managed |
 
 `edubloom.com.ng` itself is never used as a sending domain.
@@ -21,24 +21,27 @@ Keeping it clean protects the root domain reputation.
 
 ## Requirement 1 — SPF and DKIM Records
 
-### pay.edubloom.com.ng (Mailgun — Transactional)
+### pay.edubloom.com.ng (Resend — Email Backup)
+
+> **Note:** WhatsApp via Termii is the PRIMARY receipt channel.
+> Resend email is the BACKUP for parents who provide an email address.
 
 Add all five records at your DNS provider (Namecheap / GoDaddy / wherever edubloom.com.ng is registered).
 
-**Step 1 — Get your DKIM key from Mailgun:**
-1. Log into mailgun.com → Sending → Domains → Add New Domain
-2. Enter: `pay.edubloom.com.ng`
-3. Mailgun generates a DKIM public key unique to your account
-4. Copy it — it looks like: `k=rsa; p=MIGfMA0GCS...` (very long string)
+**Step 1 — Get your DKIM key from Resend:**
+1. Log into resend.com (free — 3,000 emails/month)
+2. Go to: Domains → Add Domain
+3. Enter: `pay.edubloom.com.ng`
+4. Resend generates your DKIM key — copy it
 
 **Step 2 — Add these DNS records:**
 
 ```
 TYPE    HOST                                    VALUE
 ────────────────────────────────────────────────────────────────────────────────
-TXT     pay.edubloom.com.ng                     v=spf1 include:mailgun.org ~all
+TXT     pay.edubloom.com.ng                     v=spf1 include:_spf.resend.com ~all
 
-TXT     k1._domainkey.pay.edubloom.com.ng       k=rsa; p={YOUR_MAILGUN_DKIM_KEY}
+TXT     resend._domainkey.pay.edubloom.com.ng       k=rsa; p={YOUR_MAILGUN_DKIM_KEY}
                                                 (paste the full key from Mailgun)
 
 TXT     _dmarc.pay.edubloom.com.ng              v=DMARC1; p=quarantine;
@@ -46,14 +49,11 @@ TXT     _dmarc.pay.edubloom.com.ng              v=DMARC1; p=quarantine;
                                                 ruf=mailto:dmarc@pay.edubloom.com.ng;
                                                 pct=100; adkim=s; aspf=s
 
-MX      pay.edubloom.com.ng                     10 mxa.mailgun.org
-MX      pay.edubloom.com.ng                     10 mxb.mailgun.org
-
-CNAME   email.pay.edubloom.com.ng               mailgun.org
+CNAME   click.pay.edubloom.com.ng               click.unsubscribe-sender.resend.com
 ```
 
 **Step 3 — Verify in Mailgun:**
-After adding records, go to Mailgun → Domains → pay.edubloom.com.ng → Check DNS Records.
+After adding records, go to Resend → Domains → pay.edubloom.com.ng → Verify.
 DNS propagation takes up to 48 hours but usually under 1 hour in Nigeria.
 
 ---
@@ -135,8 +135,8 @@ Data appears after your first 100 emails to Gmail addresses.
 
 ---
 
-### B. Mailgun Analytics (Transactional)
-**URL:** mailgun.com → Sending → Analytics
+### B. Resend Analytics (Email Backup)
+**URL:** resend.com → Emails (log of every email sent)
 **What it shows:**
 - Delivered / Failed / Queued per email
 - Bounce rate (hard bounce = bad address, soft bounce = temp issue)
@@ -200,13 +200,14 @@ firebase functions:secrets:list
 
 Before going live with email receipts:
 
-- [ ] Mailgun account created, `pay.edubloom.com.ng` added and verified
+- [ ] Resend account created (resend.com — free), `pay.edubloom.com.ng` domain added and verified
 - [ ] Brevo account created, `hello.edubloom.com.ng` added and verified
 - [ ] All 5 DNS records for `pay.edubloom.com.ng` added and verified in Mailgun
 - [ ] All 4 DNS records for `hello.edubloom.com.ng` added and verified in Brevo
 - [ ] Google Postmaster Tools domain verified for both domains
 - [ ] MXToolbox monitor set for `pay.edubloom.com.ng`
-- [ ] MAILGUN_API_KEY secret set in Firebase
+- [ ] TERMII_API_KEY, TERMII_DEVICE_ID, TERMII_TEMPLATE_ID secrets set in Firebase
+- [ ] RESEND_API_KEY secret set in Firebase
 - [ ] PAYSTACK_SECRET_KEY secret set in Firebase
 - [ ] Mail-tester score 9.5+ confirmed for a test receipt
 - [ ] Admin email failures collection checked after first 10 live receipts
@@ -218,13 +219,14 @@ Before going live with email receipts:
 
 | Service | Free tier | Paid |
 |---------|----------|------|
-| Mailgun | 100 emails/day | $35/month (50k emails) |
+| Resend  | 3,000 emails/month free | $20/month (50k emails) |
 | Brevo | 300 emails/day | $25/month (20k emails) |
 | Google Postmaster | Free | Free |
 | MXToolbox Monitor | Free (1 monitor) | $129/year (unlimited) |
 
-At Stage 1 (5 schools, ~500 parents): free tiers are sufficient.
-At Stage 3 (50+ schools): Mailgun Flex at ~$0.80/1000 emails.
+At Stage 1 (5 schools, ~500 parents): Resend free tier is more than enough.
+At Stage 3 (50+ schools, ~5,000 parents): still within Resend free tier.
+Resend paid only needed above 3,000 emails/month — far beyond Stage 3.
 
 ---
 
