@@ -87,3 +87,13 @@ process and pricing, and the acceptance criteria for all three apps.
 
 Any feature request not listed in Section 2 of that document requires a formal
 Change Order before work begins.
+---
+
+## Email Infrastructure
+
+`EMAIL_INFRASTRUCTURE.md` in this repo covers:
+- SPF + DKIM + DMARC DNS records for `pay.edubloom.com.ng` (Mailgun) and `hello.edubloom.com.ng` (Brevo)
+- Sending domain split — transactional vs marketing fully isolated
+- Delivery monitoring: Google Postmaster Tools, Mailgun Analytics, MXToolbox, Mail-Tester
+- Deploy checklist before going live with email receipts
+- Firebase secrets required: PAYSTACK_SECRET_KEY, MAILGUN_API_KEY
