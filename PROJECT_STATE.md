@@ -76,7 +76,7 @@ Email: aarinat.company.limited@gmail.com
 |------|---------------|-----------------|
 | bloom-agent | 20260820-security | edubloom-bloom-agent-20260820-security |
 | bloom-portal | 20260820-security | edubloom-bloom-portal-20260820-security |
-| **School-Bloom** | **20260823c** | **edubloom-School-Bloom-20260823c** |
+| **School-Bloom** | **20260824-probe-fix** | **edubloom-School-Bloom-20260824-probe-fix** |
 | bloom-agent-v2 | 20260820-security | edubloom-bloom-agent-v2-20260820-security |
 | bloom-portal-v2 | 20260820-security | edubloom-bloom-portal-v2-20260820-security |
 | school-bloom-v2 | 20260820-email-receipts | edubloom-school-bloom-v2-20260820-email-receipts |
@@ -367,6 +367,11 @@ shows and the app locks after 3 days grace period. Working in production. Not ye
 ---
 
 ## 14. Session Log
+
+### 2026-08-24 — Fix: false offline indicator on Nigerian 4G
+Probe replaced: Firestore REST → connectivitycheck.gstatic.com/generate_204
+mode:no-cors added. Timeout 8s → 15s. navigator.onLine===false fast-path added.
+Cache bumped to 20260824-probe-fix. README updated.
 
 ### 2026-08-24 — PROJECT_STATE.md created (this session)
 Created the second brain. Captured all state from all sessions.
