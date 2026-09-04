@@ -162,8 +162,8 @@ async function initAdmin(){
   try{
     const ag=await db.collection('admin_agents').get();
     if(ag.empty){
-      await db.collection('admin_agents').add({name:'John Doe',phone:'2348012345678',commission:20,joinedAt:new Date()});
-      await db.collection('admin_agents').add({name:'Grace Okonkwo',phone:'2348098765432',commission:20,joinedAt:new Date()});
+      await db.collection('admin_agents').add({name:'John Doe',phone:'2348012345678',commission:5000,joinedAt:new Date()});
+      await db.collection('admin_agents').add({name:'Grace Okonkwo',phone:'2348098765432',commission:5000,joinedAt:new Date()});
     }
     const sd=await db.collection('admin_settings').doc('main').get();
     if(!sd.exists)await db.collection('admin_settings').doc('main').set({adminPassword:'aarinat2024',defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Edu-BLOOM!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
@@ -172,7 +172,7 @@ async function initAdmin(){
     // demo pending deal
     const deals=await db.collection('admin_deals').get();
     if(deals.empty){
-      await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:20},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Premium · 51–100',price:30000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
+      await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:5000},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Premium · 51–100',price:30000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
     }
   }catch(e){console.warn('seed:',e);}
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
@@ -522,7 +522,9 @@ async function openApproveModal(dealId){
 async function confirmApproval(){
   if(!approvalData)return;
   const{id,deal,schoolId,password}=approvalData;
-  const commission=Math.round((deal.tier?.price||0)*((deal.agent?.commission||20)/100)*(deal.terms||1));
+  // ── Flat commission: ₦5,000 per new school onboarded ────────────────────
+  const AGENT_NEW_COMM = 5000;
+  const commission = AGENT_NEW_COMM;
   const TS = firebase.firestore.FieldValue.serverTimestamp;
 
   // ── STEP 1 (CRITICAL): Mark deal approved — DIRECT write, NOT through SQ
@@ -748,7 +750,27 @@ async function renewSchool(schoolId, terms) {
       termsPaid: (s.termsPaid||0) + terms,
       renewedAt: new Date()
     });
-    alert(`✅ ${s.schoolName} renewed for ${terms} term(s).\nNew expiry: ${newExpiry.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'})}`);
+
+    // ── Renewal commission: ₦2,500 per renewal (50% of ₦5,000 flat) ────────
+    const RENEWAL_COMM = 2500;
+    if (s.agentPhone) {
+      const renewLedgerId = schoolId + '_ren_' + Date.now().toString(36);
+      SQ.push({ t:'addLedger', id: renewLedgerId, d:{
+        dealId:       schoolId + '_renewal',
+        schoolId,
+        schoolName:   s.schoolName || schoolId,
+        agent:        s.agentName  || '',
+        agentPhone:   s.agentPhone || '',
+        amount:       RENEWAL_COMM,
+        isRenewal:    true,
+        termsRenewed: terms,
+        paid:         false,
+        date:         new Date()
+      }});
+      await log(`💰 Renewal commission ₦${RENEWAL_COMM.toLocaleString()} queued for ${s.agentName||'agent'} (${schoolId})`);
+    }
+
+    alert(`✅ ${s.schoolName} renewed for ${terms} term(s).\nNew expiry: ${newExpiry.toLocaleDateString('en-NG',{day:'numeric',month:'short',year:'numeric'})}\n💰 ₦2,500 renewal commission queued for ${s.agentName||'agent'}.`);
     await log(`💳 Renewed: ${schoolId} · ${terms} term(s) · new expiry ${newExpiry.toLocaleDateString()}`);
     renderApproved();
   } catch(e) { alert('Renewal failed: ' + e.message); }
