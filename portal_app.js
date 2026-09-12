@@ -153,7 +153,66 @@ async function forgotPassword(){
   }
 }
 
-// ── Firebase Auth helpers ───────────────────────────────────────────────────
+// ── Google Sign-In ──────────────────────────────────────────────────────────
+// Uses OAuth via accounts.google.com — a different path from email/password
+// (identitytoolkit.googleapis.com), so works even when the latter is flaky.
+// NOTE: Google provider must be enabled in Firebase Console →
+//       Authentication → Sign-in method → Google → Enable.
+async function doGoogleLogin() {
+  const btn   = document.getElementById('google-btn');
+  const errEl = document.getElementById('l-err');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.childNodes[1].textContent = ' Opening Google…'; }
+  if (errEl) errEl.style.display = 'none';
+
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.setCustomParameters({ login_hint: ADMIN_EMAIL });
+
+  try {
+    // Popup is cleaner UX (no page navigation) — try it first.
+    const result = await firebase.auth().signInWithPopup(provider);
+    await _handleGoogleAuthResult(result.user);
+  } catch(popupErr) {
+    if (popupErr.code === 'auth/popup-blocked' ||
+        popupErr.code === 'auth/popup-closed-by-user' ||
+        popupErr.code === 'auth/cancelled-popup-request') {
+      // Popup blocked by browser — fall back to full-page redirect.
+      try { await firebase.auth().signInWithRedirect(provider); }
+      catch(e) { _googleLoginError(e, btn, errEl); }
+    } else {
+      _googleLoginError(popupErr, btn, errEl);
+    }
+  }
+}
+
+function _googleLoginError(err, btn, errEl) {
+  const msg = err?.code === 'auth/account-exists-with-different-credential'
+    ? 'This Google account is registered with a different sign-in method. Use the password form above.'
+    : (err?.message || err?.code || 'Google sign-in failed.');
+  if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+  if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.childNodes[1].textContent = ' Sign in with Google'; }
+}
+
+async function _handleGoogleAuthResult(user) {
+  if (!user) return;
+  const btn   = document.getElementById('google-btn');
+  const errEl = document.getElementById('l-err');
+  if (user.email !== ADMIN_EMAIL) {
+    await firebase.auth().signOut().catch(() => {});
+    if (errEl) { errEl.textContent = `Wrong Google account. Sign in as ${ADMIN_EMAIL}.`; errEl.style.display = 'block'; }
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.childNodes[1].textContent = ' Sign in with Google'; }
+    return;
+  }
+  _cachedPwd = '';
+  localStorage.setItem('ad_auth', '1');
+  localStorage.setItem('ad_auth_time', Date.now().toString());
+  $('login-screen').style.display = 'none';
+  $('main-app').style.display    = 'block';
+  _removeBgAuthBanner();
+  SQ.ping();
+  await initAdmin();
+}
+
+// ── Navigation ─────────────────────────────────────────────────────────────
 
 // Called before every critical Firestore write.
 // Tries to (re-)establish Firebase Auth so Firestore rules pass.
@@ -2126,6 +2185,15 @@ async function clearAll(){
 document.addEventListener('DOMContentLoaded', () => {
   SQ.ping();
 
+  // Handle Google sign-in that completed via full-page redirect.
+  // Must be called before onAuthStateChanged to ensure the redirect
+  // user is fully populated when the auth state fires.
+  firebase.auth().getRedirectResult().then(result => {
+    if (result && result.user) _handleGoogleAuthResult(result.user);
+  }).catch(err => {
+    console.warn('getRedirectResult error:', err?.code, err?.message);
+  });
+
   // Firebase Auth has its own IndexedDB persistence with long-lived refresh tokens.
   // Check it first — if Bayo already has an active Firebase session we can skip
   // the login screen entirely even if the localStorage 8-hour window has lapsed.
@@ -2139,16 +2207,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (user && user.email === ADMIN_EMAIL) {
       // Firebase Auth is live and it's Bayo's account — refresh the localStorage
       // session timestamp so the 8-hour window restarts from now.
-      _cachedPwd = '';  // not needed — Firebase Auth is handling refresh tokens
+      _cachedPwd = '';
       localStorage.setItem('ad_auth', '1');
       localStorage.setItem('ad_auth_time', Date.now().toString());
       $('login-screen').style.display = 'none';
       $('main-app').style.display    = 'block';
+      _removeBgAuthBanner();
       initAdmin();
     } else if (localValid) {
-      // localStorage session is still within 8 hours but Firebase Auth lapsed
-      // (token just expired and couldn't auto-refresh). Show the app in backup
-      // mode with a banner — background retry will attempt to restore auth.
+      // localStorage session is still within 8 hours but Firebase Auth lapsed.
+      // Show the app in backup mode — background retry will attempt to restore auth.
       $('login-screen').style.display = 'none';
       $('main-app').style.display    = 'block';
       _showBackupAuthBanner();
@@ -2159,7 +2227,6 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.removeItem('ad_auth');
         localStorage.removeItem('ad_auth_time');
       }
-      // Login screen is already visible by default — nothing to do.
     }
   });
 });
