@@ -11,7 +11,8 @@ try{
 
 // Real Firebase Auth admin account — created 25 July 2026, tried first on login.
 // Firestore rule for admin_settings checks this exact account's UID.
-const ADMIN_EMAIL = 'adebayoadesanya423@gmail.com';
+const ADMIN_EMAIL        = 'adebayoadesanya423@gmail.com';   // email/password Firebase Auth
+const ADMIN_GOOGLE_EMAIL = 'aarinat.company.limited@gmail.com'; // Google Sign-In account
 
 // ── State ──────────────────────────────────────────────────────────────────
 let pendingUnsub=null;
@@ -165,7 +166,7 @@ async function doGoogleLogin() {
   if (errEl) errEl.style.display = 'none';
 
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ login_hint: ADMIN_EMAIL });
+  provider.setCustomParameters({ login_hint: ADMIN_GOOGLE_EMAIL });
 
   try {
     // Popup is cleaner UX (no page navigation) — try it first.
@@ -196,9 +197,9 @@ async function _handleGoogleAuthResult(user) {
   if (!user) return;
   const btn   = document.getElementById('google-btn');
   const errEl = document.getElementById('l-err');
-  if (user.email !== ADMIN_EMAIL) {
+  if (user.email !== ADMIN_EMAIL && user.email !== ADMIN_GOOGLE_EMAIL) {
     await firebase.auth().signOut().catch(() => {});
-    if (errEl) { errEl.textContent = `Wrong Google account. Sign in as ${ADMIN_EMAIL}.`; errEl.style.display = 'block'; }
+    if (errEl) { errEl.textContent = `Wrong Google account. Sign in as ${ADMIN_GOOGLE_EMAIL}.`; errEl.style.display = 'block'; }
     if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.childNodes[1].textContent = ' Sign in with Google'; }
     return;
   }
@@ -2204,7 +2205,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const EIGHT_HOURS = 8 * 60 * 60 * 1000;
     const localValid = authRaw === '1' && (Date.now() - authTime) < EIGHT_HOURS;
 
-    if (user && user.email === ADMIN_EMAIL) {
+    if (user && (user.email === ADMIN_EMAIL || user.email === ADMIN_GOOGLE_EMAIL)) {
       // Firebase Auth is live and it's Bayo's account — refresh the localStorage
       // session timestamp so the 8-hour window restarts from now.
       _cachedPwd = '';
