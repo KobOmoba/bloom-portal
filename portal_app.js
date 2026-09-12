@@ -94,25 +94,30 @@ async function doLogin(){
   const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
   const errEl=$('l-err'); errEl.style.display='none';
 
-  // Try real Firebase Auth first (own project, no third party involved).
-  try{
-    await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
-    _cachedPwd = pwd;   // cache for silent re-auth if session expires mid-session
-    localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    SQ.ping();
-    await initAdmin();
-    btn.textContent='🔓 Enter'; btn.disabled=false;
-    return;
-  }catch(authErr){
-    // Any failure here — network or wrong password — falls through to the
-    // Firestore backup below rather than failing outright. Restored
-    // 2026-08-02 after auth/network-request-failed locked Bayo out even
-    // with the correct password, because Firestore was still reachable
-    // when identitytoolkit.googleapis.com specifically wasn't.
-    console.warn('Firebase Auth failed, trying backup password:', authErr?.code, authErr?.message);
+  // Try real Firebase Auth — retry up to 3 times with short delays.
+  // Google's identity service (identitytoolkit.googleapis.com) is occasionally
+  // unreachable for seconds at a time on mobile networks. Retrying handles most cases.
+  let lastAuthErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
+      _cachedPwd = pwd;
+      localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
+      $('login-screen').style.display='none';
+      $('main-app').style.display='block';
+      SQ.ping();
+      await initAdmin();
+      btn.textContent='🔓 Enter'; btn.disabled=false;
+      return;
+    } catch(authErr) {
+      lastAuthErr = authErr;
+      const retryable = authErr?.code === 'auth/network-request-failed' || authErr?.code === 'auth/too-many-requests';
+      if (!retryable || attempt === 3) break;
+      btn.textContent = `🔄 Retrying (${attempt}/3)…`;
+      await new Promise(r => setTimeout(r, 2000 * attempt)); // 2s, 4s
+    }
   }
+  console.warn('Firebase Auth failed after 3 attempts, trying backup password:', lastAuthErr?.code, lastAuthErr?.message);
 
   // Backup: Firestore-stored password (Settings → Backup Admin Password).
   let stored='aarinat2024';
@@ -150,23 +155,39 @@ async function forgotPassword(){
 
 // ── Firebase Auth helpers ───────────────────────────────────────────────────
 
-// Called before every critical Firestore write. If Firebase Auth has no
-// current user (backup-password login path, or session quietly expired),
-// attempts silent re-auth with the cached password. Returns true if auth
-// is now active, false if it still isn't (caller should still try the write
-// — Firestore offline persistence may queue it until auth restores).
+// Called before every critical Firestore write.
+// Tries to (re-)establish Firebase Auth so Firestore rules pass.
+// Order: 1) already signed in  2) silent email re-auth (cached pwd)  3) anonymous fallback
 async function _ensureFirebaseAuth() {
   if (firebase.auth().currentUser) return true;
-  if (!_cachedPwd) return false;
-  try {
-    await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, _cachedPwd);
-    console.log('✅ Firebase Auth re-established silently');
-    _removeBgAuthBanner();
-    return true;
-  } catch(e) {
-    console.warn('[_ensureFirebaseAuth] silent re-auth failed:', e.code);
-    return false;
+
+  // 1. Try email/password re-auth if we have a cached password
+  if (_cachedPwd) {
+    for (let i = 1; i <= 3; i++) {
+      try {
+        await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, _cachedPwd);
+        console.log('✅ Firebase Auth re-established silently (attempt', i, ')');
+        _removeBgAuthBanner();
+        return true;
+      } catch(e) {
+        if (e.code !== 'auth/network-request-failed' || i === 3) break;
+        await new Promise(r => setTimeout(r, 2000 * i));
+      }
+    }
   }
+
+  // 2. Anonymous fallback — works for collections whose rules only check
+  //    request.auth != null (e.g. admin_deals create). Will NOT satisfy
+  //    UID-locked rules (admin_approved_schools, admin_settings etc.).
+  try {
+    await firebase.auth().signInAnonymously();
+    console.log('⚠️ Signed in anonymously — only non-UID-locked writes will succeed');
+    return true;  // Partial auth is better than none
+  } catch(e) {
+    console.warn('[_ensureFirebaseAuth] anonymous auth also failed:', e.code);
+  }
+
+  return false;
 }
 
 // Starts a background interval that keeps trying Firebase Auth every 30 s
@@ -602,12 +623,15 @@ async function confirmApproval(){
       approvedAt: TS()
     });
   } catch(writeErr) {
-    const errMsg = writeErr?.code === 'permission-denied'
-      ? 'Permission denied — your login session may have expired. Logout and log back in with aarinat2024.'
+    const isPermDenied = writeErr?.code === 'permission-denied';
+    const errMsg = isPermDenied
+      ? 'Firebase login session unavailable — Google\'s auth service is currently unreachable on this network. The approval is ready; click "Re-Apply Approval" in 30 seconds to retry once the connection recovers.'
       : (writeErr?.message || String(writeErr));
-    alert(`⚠️ APPROVAL FAILED — deal not updated.\n\n${errMsg}\n\n📋 WRITE THESE DOWN:\nSchool ID: ${schoolId}\nPassword: ${password}\n\nFix the connection issue and click "Re-Apply Approval" on this deal.`);
-    // Store the schoolId on the deal so the stuck-deal banner appears
+    alert(`⚠️ APPROVAL FAILED — deal not updated.\n\n${errMsg}\n\n📋 WRITE THESE DOWN:\nSchool ID: ${schoolId}\nPassword: ${password}\n\nClick "Re-Apply Approval" on this deal to retry once back online.`);
+    // Queue the schoolId update so the stuck-deal banner and Re-Apply button appear
     SQ.push({t:'updateDeal',id,d:{schoolId}});
+    // Also start a background auth retry so the Re-Apply click is more likely to succeed
+    if (isPermDenied && _cachedPwd) _startBgAuthRetry(_cachedPwd);
     closeM('approve-modal');
     approvalData=null;
     return;
@@ -2099,22 +2123,48 @@ async function clearAll(){
 }
 
 // ── Boot ───────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded',()=>{
+document.addEventListener('DOMContentLoaded', () => {
   SQ.ping();
-  const authRaw = localStorage.getItem('ad_auth');
-  const authTime = parseInt(localStorage.getItem('ad_auth_time')||'0');
-  const EIGHT_HOURS = 8 * 60 * 60 * 1000;
-  const sessionValid = authRaw === '1' && (Date.now() - authTime) < EIGHT_HOURS;
-  if(sessionValid){
-    $('login-screen').style.display='none';
-    $('main-app').style.display='block';
-    initAdmin();
-  } else if(authRaw){
-    // Session expired — clear and show login
-    localStorage.removeItem('ad_auth');
-    localStorage.removeItem('ad_auth_time');
-  }
+
+  // Firebase Auth has its own IndexedDB persistence with long-lived refresh tokens.
+  // Check it first — if Bayo already has an active Firebase session we can skip
+  // the login screen entirely even if the localStorage 8-hour window has lapsed.
+  // onAuthStateChanged fires once immediately with the persisted user (or null).
+  firebase.auth().onAuthStateChanged(user => {
+    const authRaw  = localStorage.getItem('ad_auth');
+    const authTime = parseInt(localStorage.getItem('ad_auth_time') || '0');
+    const EIGHT_HOURS = 8 * 60 * 60 * 1000;
+    const localValid = authRaw === '1' && (Date.now() - authTime) < EIGHT_HOURS;
+
+    if (user && user.email === ADMIN_EMAIL) {
+      // Firebase Auth is live and it's Bayo's account — refresh the localStorage
+      // session timestamp so the 8-hour window restarts from now.
+      _cachedPwd = '';  // not needed — Firebase Auth is handling refresh tokens
+      localStorage.setItem('ad_auth', '1');
+      localStorage.setItem('ad_auth_time', Date.now().toString());
+      $('login-screen').style.display = 'none';
+      $('main-app').style.display    = 'block';
+      initAdmin();
+    } else if (localValid) {
+      // localStorage session is still within 8 hours but Firebase Auth lapsed
+      // (token just expired and couldn't auto-refresh). Show the app in backup
+      // mode with a banner — background retry will attempt to restore auth.
+      $('login-screen').style.display = 'none';
+      $('main-app').style.display    = 'block';
+      _showBackupAuthBanner();
+      initAdmin();
+    } else {
+      // No valid session at all — show login screen.
+      if (authRaw) {
+        localStorage.removeItem('ad_auth');
+        localStorage.removeItem('ad_auth_time');
+      }
+      // Login screen is already visible by default — nothing to do.
+    }
+  });
 });
+
+
 
 
 async function loadAlerts(){
