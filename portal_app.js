@@ -16,6 +16,8 @@ const ADMIN_EMAIL = 'adebayoadesanya423@gmail.com';
 // ── State ──────────────────────────────────────────────────────────────────
 let pendingUnsub=null;
 let approvalData=null;
+let _cachedPwd='';        // held in memory only — never written to localStorage
+let _bgAuthRetry=null;    // setInterval handle for background Firebase Auth retry
 
 // ── Sync Queue ─────────────────────────────────────────────────────────────
 const SQ={
@@ -95,6 +97,7 @@ async function doLogin(){
   // Try real Firebase Auth first (own project, no third party involved).
   try{
     await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
+    _cachedPwd = pwd;   // cache for silent re-auth if session expires mid-session
     localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
     $('login-screen').style.display='none';
     $('main-app').style.display='block';
@@ -120,9 +123,13 @@ async function doLogin(){
     btn.textContent='🔓 Enter'; btn.disabled=false;
     return;
   }
+  _cachedPwd = pwd;   // cache so background retry and _ensureFirebaseAuth can use it
   localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
   $('login-screen').style.display='none';
   $('main-app').style.display='block';
+  // Show warning — Firebase Auth is not active, so direct Firestore writes need a retry
+  _showBackupAuthBanner();
+  _startBgAuthRetry(pwd);
   SQ.ping();
   await initAdmin();
   btn.textContent='🔓 Enter'; btn.disabled=false;
@@ -141,7 +148,59 @@ async function forgotPassword(){
   }
 }
 
-// ── Navigation ─────────────────────────────────────────────────────────────
+// ── Firebase Auth helpers ───────────────────────────────────────────────────
+
+// Called before every critical Firestore write. If Firebase Auth has no
+// current user (backup-password login path, or session quietly expired),
+// attempts silent re-auth with the cached password. Returns true if auth
+// is now active, false if it still isn't (caller should still try the write
+// — Firestore offline persistence may queue it until auth restores).
+async function _ensureFirebaseAuth() {
+  if (firebase.auth().currentUser) return true;
+  if (!_cachedPwd) return false;
+  try {
+    await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, _cachedPwd);
+    console.log('✅ Firebase Auth re-established silently');
+    _removeBgAuthBanner();
+    return true;
+  } catch(e) {
+    console.warn('[_ensureFirebaseAuth] silent re-auth failed:', e.code);
+    return false;
+  }
+}
+
+// Starts a background interval that keeps trying Firebase Auth every 30 s
+// until it succeeds (Google's identity service may be briefly unreachable).
+function _startBgAuthRetry(pwd) {
+  if (_bgAuthRetry) clearInterval(_bgAuthRetry);
+  _bgAuthRetry = setInterval(async () => {
+    if (firebase.auth().currentUser) { clearInterval(_bgAuthRetry); _bgAuthRetry=null; _removeBgAuthBanner(); return; }
+    try {
+      await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
+      clearInterval(_bgAuthRetry); _bgAuthRetry=null;
+      _cachedPwd = pwd;
+      _removeBgAuthBanner();
+      console.log('✅ Background Firebase Auth succeeded — full write access restored');
+    } catch(e) { /* keep retrying every 30 s */ }
+  }, 30000);
+}
+
+// Shows a persistent yellow banner warning Bayo that approval writes may
+// fail until the background Firebase Auth retry succeeds.
+function _showBackupAuthBanner() {
+  if (document.getElementById('backup-auth-warn')) return;
+  const bar = document.createElement('div');
+  bar.id = 'backup-auth-warn';
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#d97706;color:#fff;font-size:0.78rem;text-align:center;padding:6px 12px;letter-spacing:0.02em;';
+  bar.textContent = '⚠️ Logged in via backup password — Google login unavailable. Approval writes are retrying in the background. Try approving again in 30 s if it fails.';
+  document.body.prepend(bar);
+}
+function _removeBgAuthBanner() {
+  const el = document.getElementById('backup-auth-warn');
+  if (el) el.remove();
+}
+
+
 function go(tab){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('on'));
@@ -531,6 +590,11 @@ async function confirmApproval(){
   // Using direct write so the real-time listener fires immediately and the
   // deal disappears from the pending list. SQ is unreliable here because
   // a failed SQ item has no user-visible error and the deal stays stuck.
+  //
+  // Ensure Firebase Auth is active before writing — if Bayo logged in via
+  // the backup-password path, currentUser may be null and the write fails
+  // with permission-denied. _ensureFirebaseAuth attempts silent re-auth first.
+  await _ensureFirebaseAuth();
   try {
     await db.collection('admin_deals').doc(id).update({
       status: 'approved',
@@ -2062,3 +2126,4 @@ async function loadAlerts(){
     if(count>0) console.warn(`⚠️ ${count} unresolved tier alerts`);
   } catch(e){}
 }
+
