@@ -1,5 +1,5 @@
 // EduBloom — Command Center Service Worker
-const CACHE_NAME = 'edubloom-bledubloom-bloom-portal-20260905-20260904-google-email-fix';
+const CACHE_NAME = 'edubloom-bledubloom-bloom-portal-20260905-20260904-google-redirect-fix';
 const SHELL_ASSETS = [
   './',
   './index.html',
