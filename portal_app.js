@@ -162,26 +162,20 @@ async function forgotPassword(){
 async function doGoogleLogin() {
   const btn   = document.getElementById('google-btn');
   const errEl = document.getElementById('l-err');
-  if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; btn.childNodes[1].textContent = ' Opening Google…'; }
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.7'; }
   if (errEl) errEl.style.display = 'none';
 
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ login_hint: ADMIN_GOOGLE_EMAIL });
+  provider.setCustomParameters({ login_hint: ADMIN_GOOGLE_EMAIL, prompt: 'select_account' });
 
+  // Use redirect directly — popup causes state mismatch on mobile Chrome
+  // (Chrome Custom Tab is a separate context; sessionStorage state is lost on return).
+  // getRedirectResult() in the boot block captures the result on page reload.
   try {
-    // Popup is cleaner UX (no page navigation) — try it first.
-    const result = await firebase.auth().signInWithPopup(provider);
-    await _handleGoogleAuthResult(result.user);
-  } catch(popupErr) {
-    if (popupErr.code === 'auth/popup-blocked' ||
-        popupErr.code === 'auth/popup-closed-by-user' ||
-        popupErr.code === 'auth/cancelled-popup-request') {
-      // Popup blocked by browser — fall back to full-page redirect.
-      try { await firebase.auth().signInWithRedirect(provider); }
-      catch(e) { _googleLoginError(e, btn, errEl); }
-    } else {
-      _googleLoginError(popupErr, btn, errEl);
-    }
+    await firebase.auth().signInWithRedirect(provider);
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    if (errEl) { errEl.textContent = 'Google sign-in failed: ' + (e.message || e.code); errEl.style.display = 'block'; }
   }
 }
 
