@@ -362,6 +362,7 @@ async function initAdmin(){
     if(!cac.exists)await db.collection('admin_cac').doc('progress').set({raised:0});
   }catch(e){console.warn('seed:',e);}
   _migrateDealStudents(); // non-blocking
+  secureExistingSchools(false); // non-blocking — creates logins for older schools
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
   getTermCalendar().catch(()=>{}); // pre-warm calendar cache so first approval calculates expiry correctly
   startAgentRequestsListener();    // real-time badge + list for new agent requests
@@ -434,7 +435,12 @@ async function reApproveStuck(dealId, existingSchoolId){
   const deal = doc.data();
   deal.scannedStudents = await _loadDealStudents(dealId, deal);
   const sd = await db.collection('admin_settings').doc('main').get().catch(()=>null);
-  const defPwd = sd?.exists?(sd.data().defaultSchoolPassword||'bloom2026'):'bloom2026';
+  let defPwd = '';
+  try{ const saved=JSON.parse(localStorage.getItem('ad_pwd_'+dealId)||'null'); if(saved && saved.schoolId===existingSchoolId) defPwd=saved.pwd; }catch(_){}
+  if(!defPwd){
+    const rec=await db.collection('admin_approved_schools').where('schoolId','==',existingSchoolId).limit(1).get().catch(()=>null);
+    defPwd = (rec && !rec.empty && rec.docs[0].data().password) || _genSchoolPassword();
+  }
   approvalData = { id:dealId, deal, schoolId:existingSchoolId, password:defPwd };
   // Show confirmation before re-running
   if(!confirm(`Re-apply approval for ${deal.school?.name}?\n\nSchool ID: ${existingSchoolId}\nPassword: ${defPwd}\n\nThis will re-write all records and send WhatsApp credentials.`)) return;
@@ -726,6 +732,78 @@ async function _migrateDealStudents(){
   }catch(e){ console.warn('deal-students migration:', e.code||e.message); }
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// SCHOOL SECURE LOGINS (Oct 2026)
+// Each school signs in to Firebase as <school id>@schools.edubloom.com.ng.
+// Firestore rules only let that login, its staff, or Bayo touch the school.
+// Logins are created here with a second Firebase instance so Bayo stays signed in.
+// ══════════════════════════════════════════════════════════════════════
+function _schoolAuthEmail(sid){ return String(sid||'').trim().toLowerCase()+'@schools.edubloom.com.ng'; }
+function _creatorAuth(){
+  const name='school-creator';
+  const app=firebase.apps.find(a=>a.name===name)||firebase.initializeApp(firebase.app().options,name);
+  return app.auth();
+}
+// 8-character password, no look-alike characters (0/O, 1/l/I)
+function _genSchoolPassword(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  const r=new Uint32Array(8); crypto.getRandomValues(r);
+  let p=''; for(let i=0;i<8;i++) p+=chars[r[i]%chars.length];
+  return /[0-9]/.test(p)?p:(p.slice(0,7)+'7');
+}
+// Creates the school's login. Returns 'created' or 'exists'.
+async function _createSchoolLogin(sid,pwd){
+  const ca=_creatorAuth();
+  try{ await ca.createUserWithEmailAndPassword(_schoolAuthEmail(sid),pwd); try{await ca.signOut();}catch(_){}; return 'created'; }
+  catch(e){ if(e.code==='auth/email-already-in-use') return 'exists'; throw e; }
+}
+// Changes a school login's password. Needs the current password (stored on the
+// approved-school record). If the login does not exist yet, it is created.
+async function _setSchoolLoginPassword(sid,oldPwd,newPwd){
+  const ca=_creatorAuth();
+  try{
+    const cred=await ca.signInWithEmailAndPassword(_schoolAuthEmail(sid),oldPwd||'x');
+    await cred.user.updatePassword(newPwd);
+    try{await ca.signOut();}catch(_){}
+    return 'updated';
+  }catch(e){
+    const c=e.code||'';
+    if(c==='auth/user-not-found'||c==='auth/invalid-credential'||c==='auth/invalid-login-credentials'||c==='auth/wrong-password'){
+      const r=await _createSchoolLogin(sid,newPwd);
+      if(r==='created') return 'created';
+      const err=new Error('stale'); err.code='stale-password'; throw err;
+    }
+    throw e;
+  }
+}
+function _staleLoginHelp(sid){
+  return `The school changed its password inside the app, so the portal can't update its login.\n\nTo reset it:\n1. Firebase Console → Authentication → Users\n2. Find ${_schoolAuthEmail(sid)} → ⋮ → Delete account\n3. Come back here and tap Reset Password again.`;
+}
+// Creates logins for already-approved schools that don't have one yet.
+// Runs silently on portal load; also available as a button.
+async function secureExistingSchools(showReport){
+  let created=0, existed=0, noPwd=[], failed=[];
+  try{
+    const snap=await db.collection('admin_approved_schools').get();
+    for(const d of snap.docs){
+      const r=d.data(); if(!r.schoolId || r.secureLogin) continue;
+      if(!r.password){ noPwd.push(r.schoolId); continue; }
+      try{
+        const res=await _createSchoolLogin(r.schoolId, r.password);
+        res==='created'?created++:existed++;
+        await d.ref.update({secureLogin:true, secureLoginAt:new Date()});
+      }catch(e){ failed.push(r.schoolId+' ('+(e.code||e.message)+')'); }
+    }
+  }catch(e){ if(showReport) alert('Could not read approved schools: '+(e.message||e)); return; }
+  if(created||failed.length) log(`🔐 Secure school logins: ${created} created, ${existed} already existed${failed.length?', '+failed.length+' failed':''}`);
+  if(showReport){
+    alert(`🔐 Secure school logins\n\n✅ ${created} created\n☑️ ${existed} already had one`+
+      (noPwd.length?`\n⚠️ No stored password (use Reset Password): ${noPwd.join(', ')}`:'')+
+      (failed.length?`\n❌ Failed: ${failed.join(', ')}`:'')+
+      `\n\nSchools log in with their School ID and the password you sent them.`);
+  }
+}
+
 async function openApproveModal(dealId){
   let deal;
   try{const doc=await db.collection('admin_deals').doc(dealId).get();if(!doc.exists)return alert('Deal not found.');deal=doc.data();}
@@ -744,8 +822,10 @@ async function openApproveModal(dealId){
 
   $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;line-height:1.8;">\n    <div><b>School:</b> ${esc(deal.school?.name)}</div>\n    <div><b>Principal WhatsApp:</b> ${esc(deal.school?.phone)}</div>\n    <div><b>Students:</b> ${deal.school?.studentCount||0} (agent reported)</div>\n    <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>\n    <div><b>Agent:</b> ${esc(deal.agent?.name)} · ${esc(deal.agent?.phone)}</div>\n    ${scannedPreview}\n  </div>`;
   $('ap-id').textContent=schoolId;
-  $('ap-pwd').textContent=defPwd;
-  approvalData={id:dealId,deal,schoolId,password:defPwd};
+  const schoolPwd=_genSchoolPassword();
+  try{ localStorage.setItem('ad_pwd_'+dealId, JSON.stringify({schoolId,pwd:schoolPwd})); }catch(_){}
+  $('ap-pwd').textContent=schoolPwd;
+  approvalData={id:dealId,deal,schoolId,password:schoolPwd};
   openM('approve-modal');
 }
 
@@ -857,6 +937,18 @@ async function confirmApproval(){
   } catch(e) {
     console.warn('Direct write failed, queuing fallback:', e);
     SQ.push({t:'createSchool',id:schoolId,d:schoolDoc});
+  }
+  // 3b. Secure login for the school (School ID + password)
+  try{
+    const r=await _createSchoolLogin(schoolId,password);
+    if(r==='exists'){
+      const r2=await _setSchoolLoginPassword(schoolId,password,password).catch(e=>e.code||'err');
+      if(r2!=='updated') alert(`⚠️ ${schoolId} already had a login with a different password.\n\nAfter approval, open Approved → Reset Password for this school.`);
+    }
+    await db.collection('admin_approved_schools').doc(schoolId).set({secureLogin:true,secureLoginAt:new Date()},{merge:true}).catch(()=>{});
+  }catch(e){
+    console.warn('school login create:',e);
+    alert(`⚠️ School approved, but its secure login was not created (${e.code||e.message}).\n\nOpen Dashboard → 🔐 Secure School Logins to retry.`);
   }
   // 4. Commission ledger entry
   // Only write commission if agent is still active
@@ -1232,6 +1324,10 @@ async function resetPrincipalPassword(schoolId, schoolName, principalPhone){
   const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
   let newPwd=''; for(let i=0;i<8;i++) newPwd+=chars[Math.floor(Math.random()*chars.length)];
   try{
+    const recSnap = await db.collection('admin_approved_schools').where('schoolId','==',schoolId).limit(1).get();
+    const oldPwd = recSnap.empty ? '' : (recSnap.docs[0].data().password||'');
+    try{ await _setSchoolLoginPassword(schoolId, oldPwd, newPwd); }
+    catch(le){ if(le.code==='stale-password'){ alert(_staleLoginHelp(schoolId)); return; } throw le; }
     const schoolDoc = await db.collection('schools').doc(schoolId).get();
     if(schoolDoc.exists){
       const data = schoolDoc.data();
@@ -1247,7 +1343,7 @@ async function resetPrincipalPassword(schoolId, schoolName, principalPhone){
       console.warn('School doc not found for', schoolId, '— only admin_approved_schools record updated.');
     }
     const snap = await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
-    if(!snap.empty) await snap.docs[0].ref.update({password:newPwd});
+    if(!snap.empty) await snap.docs[0].ref.update({password:newPwd, secureLogin:true});
 
     await log(`🔑 Password reset for ${schoolName} (${schoolId})`);
     renderApproved();
@@ -2055,6 +2151,15 @@ async function saveEditSchool(){
   if(btn){btn.textContent='Saving...';btn.disabled=true;}
   try{
     const data={schoolName,principalPhone,principalEmail,password,agentName,updatedAt:new Date()};
+    const prev=(await db.collection('admin_approved_schools').doc(docId).get()).data()||{};
+    if(password && password!==prev.password){
+      if(password.length<6){ alert('Password must be at least 6 characters.'); if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;} return; }
+      try{ await _setSchoolLoginPassword(schoolId, prev.password||'', password); data.secureLogin=true; }
+      catch(le){
+        if(btn){btn.textContent='💾 Save Changes';btn.disabled=false;}
+        return alert(le.code==='stale-password'?_staleLoginHelp(schoolId):('Login password not changed: '+(le.message||le.code)));
+      }
+    }
     await db.collection('admin_approved_schools').doc(docId).update(data);
     // Also update school config if password changed
     if(password){
