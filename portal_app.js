@@ -18,6 +18,11 @@ const ADMIN_GOOGLE_EMAIL = 'aarinat.company.limited@gmail.com'; // Google Sign-I
 const ADMIN_EMAIL_2      = 'portal-admin@edubloom.com.ng';
 const ADMIN_EMAILS       = [ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_GOOGLE_EMAIL];
 
+// ── Pricing (flat) — single source of truth for the portal ───────────────
+const FLAT_PRICE         = 15000; // school pays per term
+const AGENT_NEW_COMM     = 5000;  // per new school approved
+const AGENT_RENEWAL_COMM = 2500;  // per term, each renewal, to the original agent
+
 // ── State ──────────────────────────────────────────────────────────────────
 let pendingUnsub=null;
 let approvalData=null;
@@ -350,21 +355,13 @@ function go(tab){
 async function initAdmin(){
   // seed if empty
   try{
-    const ag=await db.collection('admin_agents').get();
-    if(ag.empty){
-      await db.collection('admin_agents').add({name:'John Doe',phone:'2348012345678',commission:5000,joinedAt:new Date()});
-      await db.collection('admin_agents').add({name:'Grace Okonkwo',phone:'2348098765432',commission:5000,joinedAt:new Date()});
-    }
+    // (Demo agent seeding removed — fake agents with real-looking phone numbers could log in.)
     const sd=await db.collection('admin_settings').doc('main').get();
     if(!sd.exists)await db.collection('admin_settings').doc('main').set({defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Edu-BLOOM!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
     const cac=await db.collection('admin_cac').doc('progress').get();
     if(!cac.exists)await db.collection('admin_cac').doc('progress').set({raised:0});
-    // demo pending deal
-    const deals=await db.collection('admin_deals').get();
-    if(deals.empty){
-      await db.collection('admin_deals').add({timestamp:new Date(),status:'pending',agent:{id:'demo',name:'John Doe',phone:'2348012345678',commission:5000},school:{name:'Demo Academy',phone:'2348011112222',email:'admin@demo.edu.ng',studentCount:75},tier:{name:'Premium · 51–100',price:30000},terms:1,notes:'Demo deal — approve to test the full activation flow'});
-    }
   }catch(e){console.warn('seed:',e);}
+  _migrateDealStudents(); // non-blocking
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
   getTermCalendar().catch(()=>{}); // pre-warm calendar cache so first approval calculates expiry correctly
   startAgentRequestsListener();    // real-time badge + list for new agent requests
@@ -385,11 +382,21 @@ function startPendingListener(){
   },err=>console.warn('listener:',err));
 }
 
+// Normalises a school name so "Wisdomwalk Nursery and Primary School" and
+// "Wisdom Walk Nursery & Primary School" compare equal.
+function _schoolKey(n){
+  return String(n||'').toLowerCase()
+    .replace(/&/g,' and ')
+    .replace(/\b(nursery|primary|secondary|school|schools|college|academy|international|intl|and|the|of|group|ltd)\b/g,'')
+    .replace(/[^a-z]/g,'');
+}
 function renderPendingList(deals){
   const c=$('pending-list');
   if(!deals.length){c.innerHTML='<p style="text-align:center;color:var(--sub);padding:2rem;">✅ No pending deals.</p>';return;}
+  const _keyCount={}; deals.forEach(d=>{const k=_schoolKey(d.school?.name); if(k) _keyCount[k]=(_keyCount[k]||0)+1;});
   c.innerHTML=deals.map(d=>{
-    const comm=Math.round((d.tier?.price||0)*((d.agent?.commission||20)/100)*(d.terms||1));
+    const comm=AGENT_NEW_COMM;
+    const dupDeal=(_keyCount[_schoolKey(d.school?.name)]||0)>1;
     const ts=d.timestamp?.toDate?d.timestamp.toDate():d.timestamp?new Date(d.timestamp):null;
     const tsLabel=ts?ts.toLocaleString('en-NG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
     // Detect deals where codes were generated but approval write failed (schoolId already allocated)
@@ -398,12 +405,13 @@ function renderPendingList(deals){
       <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:4px;">
         <span class="chip cp">PENDING</span>
         ${stuckDeal?`<span class="chip" style="background:#f59e0b;color:#fff;">⚠️ CODES ISSUED — STUCK</span>`:''}
+        ${dupDeal?`<span class="chip" style="background:#dc2626;color:#fff;">⚠️ POSSIBLE DUPLICATE</span>`:''}
         ${tsLabel?`<span style="font-size:0.68rem;color:var(--sub);margin-left:auto;">🕐 ${tsLabel}</span>`:''}
       </div>
       <div class="dn">${esc(d.school?.name)}</div>
       <div class="dm">Agent: ${esc(d.agent?.name)} · ${d.school?.studentCount||0} students</div>
       <div class="dm">📱 ${esc(d.school?.phone)}</div>
-      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price)}/term · Your commission: ${fmt(comm)}</div>
+      <div class="dm" style="color:var(--text);font-weight:600;">${fmt(d.tier?.price||FLAT_PRICE)}/term · Agent commission: ${fmt(comm)}</div>
       ${d.notes?`<div class="dm" style="font-style:italic;margin-top:4px;">"${esc(d.notes)}"</div>`:''}
       ${stuckDeal?`<div class="dm" style="font-size:0.72rem;color:#f59e0b;background:rgba(245,158,11,0.08);border-radius:5px;padding:3px 6px;margin-top:4px;">
         🆔 ID already assigned: <b style="font-family:monospace;">${d.schoolId}</b> — click Re-Apply to complete activation.
@@ -424,6 +432,7 @@ async function reApproveStuck(dealId, existingSchoolId){
   const doc = await db.collection('admin_deals').doc(dealId).get().catch(()=>null);
   if(!doc||!doc.exists){ alert('Deal not found.'); return; }
   const deal = doc.data();
+  deal.scannedStudents = await _loadDealStudents(dealId, deal);
   const sd = await db.collection('admin_settings').doc('main').get().catch(()=>null);
   const defPwd = sd?.exists?(sd.data().defaultSchoolPassword||'bloom2026'):'bloom2026';
   approvalData = { id:dealId, deal, schoolId:existingSchoolId, password:defPwd };
@@ -687,6 +696,36 @@ function addCalendarState(){
 }
 
 // ── Approve ────────────────────────────────────────────────────────────────
+// Scanned student names live in admin_deal_students (Bayo-only). Older deals
+// may still carry them inline — those are migrated on portal load.
+async function _loadDealStudents(dealId, deal){
+  if(deal && Array.isArray(deal.scannedStudents) && deal.scannedStudents.length) return deal.scannedStudents;
+  try{
+    const d=await db.collection('admin_deal_students').doc(dealId).get();
+    if(d.exists){ const x=d.data(); if(x.ledgerFinancial && deal) deal.ledgerFinancial=x.ledgerFinancial; return x.names||[]; }
+  }catch(e){ console.warn('deal students load:', e.code||e.message); }
+  return [];
+}
+// One-time move of children's names out of the public admin_deals collection.
+async function _migrateDealStudents(){
+  try{
+    const snap=await db.collection('admin_deals').get();
+    const del=firebase.firestore.FieldValue.delete();
+    let moved=0;
+    for(const doc of snap.docs){
+      const d=doc.data();
+      const names=Array.isArray(d.scannedStudents)?d.scannedStudents:[];
+      if(!names.length && !d.ledgerFinancial && !('scannedStudents' in d)) continue;
+      if(names.length || d.ledgerFinancial){
+        await db.collection('admin_deal_students').doc(doc.id).set({names, ledgerFinancial:d.ledgerFinancial||null, dealId:doc.id, schoolName:d.school?.name||'', migratedAt:new Date()},{merge:true});
+      }
+      await doc.ref.update({scannedStudents:del, ledgerFinancial:del});
+      moved++;
+    }
+    if(moved) console.log('✅ Moved scanned student data out of',moved,'deals');
+  }catch(e){ console.warn('deal-students migration:', e.code||e.message); }
+}
+
 async function openApproveModal(dealId){
   let deal;
   try{const doc=await db.collection('admin_deals').doc(dealId).get();if(!doc.exists)return alert('Deal not found.');deal=doc.data();}
@@ -694,6 +733,7 @@ async function openApproveModal(dealId){
   const sd=await db.collection('admin_settings').doc('main').get().catch(()=>null);
   const defPwd=sd?.exists?(sd.data().defaultSchoolPassword||'bloom2026'):'bloom2026';
   const schoolId=genId();
+  deal.scannedStudents = await _loadDealStudents(dealId, deal);
   const scanned = deal.scannedStudents || [];
   const scannedPreview = scanned.length
     ? '<div style="margin-top:0.5rem;"><b>🤖 AI-Scanned Students (' + scanned.length + '):</b><div style="max-height:80px;overflow-y:auto;margin-top:4px;">' +
@@ -713,7 +753,6 @@ async function confirmApproval(){
   if(!approvalData)return;
   const{id,deal,schoolId,password}=approvalData;
   // ── Flat commission: ₦5,000 per new school onboarded ────────────────────
-  const AGENT_NEW_COMM = 5000;
   const commission = AGENT_NEW_COMM;
   const TS = firebase.firestore.FieldValue.serverTimestamp;
 
@@ -981,26 +1020,38 @@ async function repairSchool(schoolId) {
   if(!schoolId) return;
   schoolId = schoolId.trim().toUpperCase();
   try {
-    // Find the school record
     const snap = await db.collection('admin_approved_schools').where('schoolId','==',schoolId).get();
     if(snap.empty) { alert('School ID not found in approved schools list.'); return; }
     const s = snap.docs[0].data();
-    const schoolDoc = {
-      config:{plan:'basic',fee:50000,schoolName:s.schoolName||'',principalEmail:s.principalEmail||'',whatsapp:s.principalPhone||'',createdAt:new Date().toISOString()},
-      staff:[{name:'Principal',email:s.principalEmail||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:s.password,role:'Principal',phone:s.principalPhone||''}],
-      students: (deal.scannedStudents||[]).map((s,i)=>({
-      id: 'S' + String(i+1).padStart(4,'0'),
-      name: s.name || s,
-      class: s.class || '',
-      fees: { paid: 0, balance: deal.tier?.price || 0, history: [] },
-      attendance: {},
-      scores: {}
-    })),
-    expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
-      music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]
+    const login = {
+      config:{schoolName:s.schoolName||'',principalEmail:s.principalEmail||'',whatsapp:s.principalPhone||'',tier:'Premium',tierPrice:FLAT_PRICE},
+      staff:[{name:'Principal',email:s.principalEmail||(schoolId.toLowerCase()+'@bloom.edu.ng'),password:s.password,role:'Principal',phone:s.principalPhone||''}]
     };
-    await db.collection('schools').doc(schoolId).set(schoolDoc,{merge:true});
-    alert('✅ School account repaired!\n\nSchool ID: '+schoolId+'\nPassword: '+s.password+'\n\nThe school can now login to the portal.');
+    const existing = await db.collection('schools').doc(schoolId).get();
+    if(existing.exists){
+      // School already has data — only restore login details, never touch students/attendance/scores.
+      const ex = existing.data()||{};
+      const upd = {};
+      if(!ex.config || !ex.config.schoolName) upd.config = {...(ex.config||{}), ...login.config};
+      if(!Array.isArray(ex.staff) || !ex.staff.length) upd.staff = login.staff;
+      if(!Object.keys(upd).length){ alert('✅ '+schoolId+' is already healthy — nothing to repair.\n\nIf the principal cannot log in, use Reset Password instead.'); return; }
+      await db.collection('schools').doc(schoolId).set(upd,{merge:true});
+    } else {
+      // No school document at all — rebuild it, using the deal's scanned names if available.
+      let names = [];
+      try{
+        const ds = await db.collection('admin_deals').where('schoolId','==',schoolId).limit(1).get();
+        if(!ds.empty) names = await _loadDealStudents(ds.docs[0].id, ds.docs[0].data());
+      }catch(_){}
+      await db.collection('schools').doc(schoolId).set({
+        ...login,
+        config:{...login.config, plan:'basic', createdAt:new Date().toISOString()},
+        students: names.map((n,i)=>({ id:'S'+String(i+1).padStart(4,'0'), name:(n&&n.name)||n, class:(n&&n.class)||'', fees:{paid:0,balance:FLAT_PRICE,history:[]}, attendance:{}, scores:{} })),
+        expenses:[],attendance:{},sports:{teams:{},custom:[]},arts:{gallery:[]},
+        music:{practiceLogs:[],instruments:[]},health:[],alumni:[],socialPages:[],commsLog:[],opportunities:[]
+      });
+    }
+    alert('✅ School account repaired!\n\nSchool ID: '+schoolId+'\n\nThe school can now log in to the portal.');
     log('🔧 Repaired school account: '+schoolId);
   } catch(e) {
     alert('Repair failed: '+(e.message||e)+'\n\nCheck your internet connection.');
@@ -1342,7 +1393,7 @@ Your agent account has been approved by Bayo (AariNAT Company).
 2. Tap "Login"
 3. Enter your number: *${phone}*
 
-You earn *20% commission* on every approved school, paid to:
+You earn *₦5,000* for every school approved, plus *₦2,500* every term it renews, paid to:
 🏦 ${r.bankName||'your bank'} · ${r.acctNum||'—'} · ${r.acctName||''}
 
 GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE 💜
@@ -1694,7 +1745,7 @@ function renderAgentsFromData(agents, ledger, deals){
   $('agent-perf-body').innerHTML=agents.map(a=>{
     const d=deals.filter(x=>x.agent?.name===a.name).length;
     const comm=ledger.filter(l=>l.agent===a.name).reduce((s,l)=>s+(l.amount||0),0);
-    return`<tr>\n      <td>${esc(a.name)}</td>\n      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${a.phone}</td>\n      <td>${d}</td>\n      <td style="color:var(--money);font-weight:700;">${fmt(comm)}</td>\n      <td><span class="chip ${a.active===false?'cr':'ca'}" style="position:static;">${a.active===false?(a.deactivationReason==='fraud'?'🚨 FRAUD':a.deactivationReason==='resigned'?'Resigned':'Dismissed'):'Active'}</span></td>\n    </tr>`;
+    return`<tr>\n      <td>${esc(a.name)}</td>\n      <td style="font-family:'JetBrains Mono',monospace;font-size:0.75rem;">${esc(a.phone)}</td>\n      <td>${d}</td>\n      <td style="color:var(--money);font-weight:700;">${fmt(comm)}</td>\n      <td><span class="chip ${a.active===false?'cr':'ca'}" style="position:static;">${a.active===false?(a.deactivationReason==='fraud'?'🚨 FRAUD':a.deactivationReason==='resigned'?'Resigned':'Dismissed'):'Active'}</span></td>\n    </tr>`;
   }).join('');
 }
 
@@ -1773,7 +1824,7 @@ async function saveAgent(){
       `1. Open the link above\n` +
       `2. Tap Login\n` +
       `3. Enter your number: *${localPhone}*\n\n` +
-      `For every school you sign up, you earn commission — e.g. ₦${exampleComm} per Starter school.\n\n` +
+      `For every school you sign up, you earn ₦5,000, plus ₦2,500 every term it renews.\n\n` +
       `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
       `_Edu-BLOOM by AariNAT_`;
 
@@ -1802,22 +1853,22 @@ function resendAgentActivation(agentId){
     `*Agent App:*\n` +
     `${AGENT_APP_URL}\n\n` +
     `Open the link → tap Login → enter *${localPhone}*\n\n` +
-    `Commission: ₦${exampleComm} per Starter school, more for bigger schools.\n\n` +
+    `Commission: ₦5,000 per new school, plus ₦2,500 every term it renews.\n\n` +
     `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
     `_Edu-BLOOM by AariNAT_`;
   window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
 }
 
 
-// ── Record School Renewal — 10% commission to original agent ─────────────────
+// ── Record School Renewal — flat ₦2,500 per term to original agent ───────────
 async function recordRenewal(schoolId, schoolName, agentName, agentPhone, tierPrice){
   const price = parseFloat(tierPrice)||0;
   if(!price){ alert('Cannot calculate renewal — tier price missing. Edit the school record first.'); return; }
-  const commission = Math.round(price * 0.10);
-  const terms = parseInt(prompt(`Recording renewal for ${schoolName}\n\nTier fee: ₦${fmt(price)}/term\nAgent renewal commission (10%): ₦${fmt(commission)}\n\nHow many terms is the school renewing?`,'1'));
+  const commission = AGENT_RENEWAL_COMM;
+  const terms = parseInt(prompt(`Recording renewal for ${schoolName}\n\nTier fee: ₦${fmt(price)}/term\nAgent renewal commission: ₦${fmt(commission)} per term\n\nHow many terms is the school renewing?`,'1'));
   if(!terms||terms<1){ return; }
   const totalComm = commission * terms;
-  if(!confirm(`✅ Confirm renewal:\n\n${schoolName}\n${terms} term(s) × ₦${fmt(price)} = ₦${fmt(price*terms)}\nAgent (${agentName}): ₦${fmt(totalComm)} (10%)\n\nLog this commission?`)) return;
+  if(!confirm(`✅ Confirm renewal:\n\n${schoolName}\n${terms} term(s) × ₦${fmt(price)} = ₦${fmt(price*terms)}\nAgent (${agentName}): ₦${fmt(totalComm)}\n\nLog this commission?`)) return;
 
   const normalPhone = agentPhone.startsWith('234')?agentPhone:'234'+(agentPhone.startsWith('0')?agentPhone.slice(1):agentPhone);
   const commEntry = {
