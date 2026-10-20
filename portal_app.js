@@ -363,6 +363,7 @@ async function initAdmin(){
   }catch(e){console.warn('seed:',e);}
   _migrateDealStudents(); // non-blocking
   secureExistingSchools(false); // non-blocking — creates logins for older schools
+  secureExistingAgents(false);  // non-blocking — creates PIN logins for older agents
   syncOcrKeysToPublic(true).catch(e=>console.warn('auto OCR key sync failed:',e.message)); // silent, non-blocking — keeps agent/school apps current every session
   getTermCalendar().catch(()=>{}); // pre-warm calendar cache so first approval calculates expiry correctly
   startAgentRequestsListener();    // real-time badge + list for new agent requests
@@ -1468,6 +1469,9 @@ async function approveAgentRequest(reqId, name, phone, state){
     };
     const agentRef = await db.collection('admin_agents').add(agentData);
     const agentDocId = agentRef.id;
+    let newPin='';
+    try{ newPin=await _ensureAgentLogin(agentDocId, phone, false); }
+    catch(pe){ alert('Agent approved, but their PIN login was not created: '+(pe.message||pe.code)+'\n\nUse 📲 Resend Login on their card to retry.'); }
 
     // 2. Mark request approved
     await db.collection('admin_agent_requests').doc(reqId).update({
@@ -1488,6 +1492,9 @@ Your agent account has been approved by Bayo (AariNAT Company).
 1. Go to: agent.edubloom.com.ng
 2. Tap "Login"
 3. Enter your number: *${phone}*
+4. Enter your PIN: *${newPin||'(ask Bayo)'}*
+
+Keep your PIN private — it protects your commission.
 
 You earn *₦5,000* for every school approved, plus *₦2,500* every term it renews, paid to:
 🏦 ${r.bankName||'your bank'} · ${r.acctNum||'—'} · ${r.acctName||''}
@@ -1834,6 +1841,7 @@ function renderAgentsFromData(agents, ledger, deals){
         : `<button class="btn-w btn-sm" onclick="viewAgentIDCard('${a.id}')">🪪 ID Card</button>
            <button class="btn-w btn-sm" onclick="openEditAgent('${a.id}')">✏️ Edit</button>
            <button class="btn-w btn-sm" onclick="resendAgentActivation('${a.id}')">📲 Resend Login</button>
+           <button class="btn-w btn-sm" onclick="resetAgentPin('${a.id}')">🔑 New PIN</button>
            <button class="btn-sm" style="background:#f59e0b;color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="deactivateAgent('${a.id}','${esc(a.name)}')">🚫 Deactivate</button>
            <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>`;
       return`<div class="deal" style="border-left:3px solid ${borderColor};${cardStyle}">\n        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">${photoHtml}<div style="flex:1;min-width:0;"><div class="dn">${esc(a.name)}${statusBadge}</div><div class="dm">📱 ${a.phone} · 📍 ${esc(a.state||'—')} · ${a.commission||20}% commission</div></div></div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        ${a.bankName?`<div class="dm" style="font-size:0.72rem;color:var(--sub);">🏦 ${esc(a.bankName)} · ${esc(a.acctNum||'—')} · ${esc(a.acctName||'—')}</div>`:''}\n        ${isDeactivated?`<div class="dm" style="font-size:0.72rem;color:#f87171;margin-top:2px;">🚫 Deactivated ${a.deactivatedAt?.toDate?a.deactivatedAt.toDate().toLocaleDateString():''} · Commission HALTED</div>`:''}\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">${actionBtns}</div>\n      </div>`;
@@ -1875,6 +1883,70 @@ function normalizePhone(raw){
 // ── Update this to your actual agent app URL ───────────────────────────────
 const AGENT_APP_URL = 'https://agent.edubloom.com.ng'; // ← update this
 
+// ══════════════════════════════════════════════════════════════════════
+// AGENT PIN LOGINS (Oct 2026)
+// Each agent signs in as agent-<phone>@agents.edubloom.com.ng with a 6-digit PIN.
+// PINs are kept in admin_agent_pins (Bayo-only) so they can be resent.
+// ══════════════════════════════════════════════════════════════════════
+function _agentAuthEmail(phone){ return 'agent-'+normalizePhone(String(phone||''))+'@agents.edubloom.com.ng'; }
+function _genPin(){ const r=new Uint32Array(1); crypto.getRandomValues(r); return String(100000 + (r[0] % 900000)); }
+async function _createLogin(email,pwd){
+  const ca=_creatorAuth();
+  try{ await ca.createUserWithEmailAndPassword(email,pwd); try{await ca.signOut();}catch(_){}; return 'created'; }
+  catch(e){ if(e.code==='auth/email-already-in-use') return 'exists'; throw e; }
+}
+async function _changeLogin(email,oldPwd,newPwd){
+  const ca=_creatorAuth();
+  const cred=await ca.signInWithEmailAndPassword(email,oldPwd);
+  await cred.user.updatePassword(newPwd);
+  try{await ca.signOut();}catch(_){}
+}
+// Makes sure the agent has a working login. Returns the PIN to send them.
+// newPin=true issues a fresh PIN (used for "New PIN" and when deactivating).
+async function _ensureAgentLogin(agentId, phone, newPin){
+  const email=_agentAuthEmail(phone);
+  const pinRef=db.collection('admin_agent_pins').doc(agentId);
+  const pinDoc=await pinRef.get();
+  const oldPin=pinDoc.exists?(pinDoc.data().pin||''):'';
+  let pin=oldPin;
+  if(!oldPin || newPin){
+    pin=_genPin();
+    const r=await _createLogin(email,pin);
+    if(r==='exists'){
+      if(!oldPin){
+        const err=new Error(`A login already exists for ${email} but its PIN is unknown.\n\nFirebase Console → Authentication → Users → find ${email} → ⋮ → Delete account, then try again.`);
+        err.code='stale-pin'; throw err;
+      }
+      await _changeLogin(email,oldPin,pin);
+    }
+  } else {
+    await _createLogin(email,pin); // no-op if it already exists
+  }
+  await pinRef.set({pin, phone:normalizePhone(phone), email, updatedAt:new Date()});
+  await db.collection('admin_agents').doc(agentId).update({authEmail:email, pinSetAt:new Date()}).catch(()=>{});
+  return pin;
+}
+async function secureExistingAgents(showReport){
+  let made=0, failed=[];
+  try{
+    const snap=await db.collection('admin_agents').get();
+    for(const d of snap.docs){
+      const a=d.data(); if(a.authEmail || a.active===false || !a.phone) continue;
+      try{ await _ensureAgentLogin(d.id, a.phone, false); made++; }
+      catch(e){ failed.push((a.name||d.id)+': '+(e.code||e.message)); }
+    }
+  }catch(e){ if(showReport) alert('Could not read agents: '+(e.message||e)); return; }
+  if(made||failed.length) log(`🔑 Agent PINs: ${made} created${failed.length?', '+failed.length+' failed':''}`);
+  if(made && !showReport) setTimeout(()=>alert(`🔑 ${made} agent(s) now need a PIN to log in.\n\nOpen the Agents tab and tap 📲 Resend Login for each one to WhatsApp them their PIN.`),1500);
+  if(showReport) alert(`🔑 Agent PINs\n\n✅ ${made} created`+(failed.length?`\n❌ ${failed.join('\n❌ ')}`:''));
+}
+async function resetAgentPin(agentId){
+  const a=_agentsCache.find(x=>x.id===agentId); if(!a) return alert('Agent not found. Refresh the page.');
+  if(!confirm(`Give ${a.name} a new PIN?\n\nTheir old PIN will stop working.`)) return;
+  try{ await _ensureAgentLogin(agentId, a.phone, true); log(`🔑 New PIN issued: ${a.name}`); await resendAgentActivation(agentId); }
+  catch(e){ alert(e.message||e.code); }
+}
+
 async function saveAgent(){
   const name=$('ag-name').value.trim();
   const phone=normalizePhone($('ag-phone').value);
@@ -1893,10 +1965,10 @@ async function saveAgent(){
       // Simple direct write — no artificial timeout
       const docRef=await db.collection('admin_agents').add(agentData);
       _agentsCache=[..._agentsCache.filter(a=>!a.id.startsWith('pending_')),{id:docRef.id,...agentData}];
+      try{ var newPin=await _ensureAgentLogin(docRef.id, phone, false); }
+      catch(pe){ alert('Agent saved, but their PIN login was not created: '+(pe.message||pe.code)+'\n\nUse 📲 Resend Login on their card to retry.'); }
     } else {
-      // Offline: queue it and add to memory cache with temp id
-      SQ.push({t:'addAgent',d:agentData});
-      _agentsCache=[..._agentsCache,{id:tempId,...agentData}];
+      return alert('Adding an agent needs internet (their PIN login is created online).');
     }
     closeM('add-agent-modal');
     $('ag-name').value='';$('ag-phone').value='';$('ag-rate').value='20';
@@ -1913,13 +1985,15 @@ async function saveAgent(){
       `*Hello ${name}!* 🌸\n\n` +
       `You have been registered as an *Edu-BLOOM* agent by AariNAT.\n\n` +
       `*Your login:*\n` +
-      `📱 Phone (login key): *${localPhone}*\n\n` +
+      `📱 Phone: *${localPhone}*\n` +
+      `🔑 PIN: *${typeof newPin!=='undefined'&&newPin?newPin:'(ask Bayo)'}*\n\n` +
       `*Agent App link:*\n` +
       `${AGENT_APP_URL}\n\n` +
       `*How to log in:*\n` +
       `1. Open the link above\n` +
       `2. Tap Login\n` +
-      `3. Enter your number: *${localPhone}*\n\n` +
+      `3. Enter your number and PIN\n` +
+      `Keep your PIN private — it protects your commission.\n\n` +
       `For every school you sign up, you earn ₦5,000, plus ₦2,500 every term it renews.\n\n` +
       `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
       `_Edu-BLOOM by AariNAT_`;
@@ -1936,19 +2010,23 @@ async function saveAgent(){
 }
 
 // ── Resend activation WhatsApp to an existing agent ───────────────────────
-function resendAgentActivation(agentId){
+async function resendAgentActivation(agentId){
   const a = _agentsCache.find(x => x.id === agentId);
   if(!a){ alert('Agent not found. Refresh the page.'); return; }
   const phone = normalizePhone(a.phone || '');
   const localPhone = phone.startsWith('234') ? '0' + phone.slice(3) : phone;
-  const exampleComm = Math.round(10000 * (a.commission||20) / 100).toLocaleString('en-NG');
+  let pin='';
+  try{ pin = await _ensureAgentLogin(agentId, phone, false); }
+  catch(e){ return alert(e.message||e.code); }
   const msg =
     `*Hello ${a.name}!* 🌸\n\n` +
-    `Reminder of your *Edu-BLOOM* agent login:\n\n` +
-    `📱 Your login key (phone): *${localPhone}*\n\n` +
+    `Your *Edu-BLOOM* agent login:\n\n` +
+    `📱 Phone: *${localPhone}*\n` +
+    `🔑 PIN: *${pin}*\n\n` +
     `*Agent App:*\n` +
     `${AGENT_APP_URL}\n\n` +
-    `Open the link → tap Login → enter *${localPhone}*\n\n` +
+    `Open the link → tap Login → enter your phone and PIN.\n` +
+    `Keep your PIN private — it protects your commission.\n\n` +
     `Commission: ₦5,000 per new school, plus ₦2,500 every term it renews.\n\n` +
     `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
     `_Edu-BLOOM by AariNAT_`;
@@ -2008,6 +2086,9 @@ async function deactivateAgent(id, name){
       deactivationReason: r
     };
     await db.collection('admin_agents').doc(id).update(update);
+    // Lock them out of the app: rotate their PIN without sending it
+    try{ const ag=_agentsCache.find(x=>x.id===id); if(ag&&ag.phone) await _ensureAgentLogin(id, ag.phone, true); }
+    catch(pe){ console.warn('PIN rotation on deactivate:', pe.code||pe.message); }
 
     // If fraud — flag all pending deals by this agent
     if(r === 'fraud'){
