@@ -13,12 +13,17 @@ try{
 // Firestore rule for admin_settings checks this exact account's UID.
 const ADMIN_EMAIL        = 'adebayoadesanya423@gmail.com';   // email/password Firebase Auth
 const ADMIN_GOOGLE_EMAIL = 'aarinat.company.limited@gmail.com'; // Google Sign-In account
+// Second admin — real Firebase Auth account, password chosen by Bayo via
+// 'Set up admin password' on the login screen. Its UID is added to isBayo() in the rules.
+const ADMIN_EMAIL_2      = 'portal-admin@edubloom.com.ng';
+const ADMIN_EMAILS       = [ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_GOOGLE_EMAIL];
 
 // ── State ──────────────────────────────────────────────────────────────────
 let pendingUnsub=null;
 let approvalData=null;
 let _cachedPwd='';        // held in memory only — never written to localStorage
 let _bgAuthRetry=null;    // setInterval handle for background Firebase Auth retry
+let _adminEmail=ADMIN_EMAIL; // which admin account the cached password belongs to
 
 // ── Sync Queue ─────────────────────────────────────────────────────────────
 const SQ={
@@ -92,54 +97,107 @@ async function log(msg){
 // ── Login ──────────────────────────────────────────────────────────────────
 async function doLogin(){
   const pwd=$('l-pwd').value;
-  const btn=$('l-btn');btn.textContent='Checking...';btn.disabled=true;
-  const errEl=$('l-err'); errEl.style.display='none';
+  const btn=$('l-btn');
+  const errEl=$('l-err'); errEl.style.display='none'; errEl.style.color='';
+  if(!pwd){ errEl.textContent='Enter your admin password.'; errEl.style.display='block'; return; }
+  btn.textContent='Checking...'; btn.disabled=true;
 
-  // Try real Firebase Auth — retry up to 3 times with short delays.
-  // Google's identity service (identitytoolkit.googleapis.com) is occasionally
-  // unreachable for seconds at a time on mobile networks. Retrying handles most cases.
-  let lastAuthErr = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
-      _cachedPwd = pwd;
-      localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-      $('login-screen').style.display='none';
-      $('main-app').style.display='block';
-      SQ.ping();
-      await initAdmin();
-      btn.textContent='🔓 Enter'; btn.disabled=false;
-      return;
-    } catch(authErr) {
-      lastAuthErr = authErr;
-      const retryable = authErr?.code === 'auth/network-request-failed' || authErr?.code === 'auth/too-many-requests';
-      const wrongPwd   = authErr?.code === 'auth/wrong-password' || authErr?.code === 'auth/invalid-credential' || authErr?.code === 'auth/user-not-found';
-      if (!retryable || wrongPwd || attempt === 3) break;
-      btn.textContent = `🔄 Retrying (${attempt}/3)…`;
-      await new Promise(r => setTimeout(r, 2000 * attempt)); // 2s, 4s
+  // Real Firebase Auth only. Tries the main admin account, then the second
+  // admin account. No hardcoded backup password — rules need a real login.
+  let lastErr=null, networkFail=false;
+  for (const email of [ADMIN_EMAIL, ADMIN_EMAIL_2]) {
+    for (let attempt=1; attempt<=3; attempt++) {
+      try {
+        await firebase.auth().signInWithEmailAndPassword(email, pwd);
+        _cachedPwd=pwd; _adminEmail=email;
+        localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
+        $('login-screen').style.display='none';
+        $('main-app').style.display='block';
+        _removeBgAuthBanner();
+        SQ.ping();
+        await initAdmin();
+        btn.textContent='🔓 Enter'; btn.disabled=false;
+        return;
+      } catch(e) {
+        lastErr=e;
+        if (e?.code==='auth/network-request-failed' && attempt<3) {
+          btn.textContent=`🔄 Retrying (${attempt}/3)…`;
+          await new Promise(r=>setTimeout(r,2000*attempt));
+          continue;
+        }
+        if (e?.code==='auth/network-request-failed') networkFail=true;
+        break;
+      }
+    }
+    if (networkFail) break;
+  }
+  console.warn('Admin login failed:', lastErr?.code, lastErr?.message);
+  errEl.textContent = networkFail
+    ? 'Cannot reach Google\'s login service on this connection. Check your data or switch networks, then try again.'
+    : lastErr?.code==='auth/too-many-requests'
+      ? 'Too many attempts. Wait a few minutes, then try again.'
+      : 'Incorrect password.';
+  errEl.style.display='block';
+  btn.textContent='🔓 Enter'; btn.disabled=false;
+}
+
+// ── One-time setup: second admin account ───────────────────────────────────
+// Creates a real Firebase Auth account (ADMIN_EMAIL_2) with a password Bayo
+// chooses, then shows its UID so it can be added to isBayo() in the rules.
+async function setupSecondAdmin(){
+  const errEl=$('l-err');
+  const p1=prompt('Choose your admin password.\n\nAt least 10 characters, with letters AND numbers.\nDo not use aarinat2024 — it is public.');
+  if(p1===null) return;
+  if(p1.length<10 || !/[A-Za-z]/.test(p1) || !/[0-9]/.test(p1)) return alert('Password must be at least 10 characters and include letters and numbers.');
+  if(/aarinat2024/i.test(p1)) return alert('That password is public. Choose a different one.');
+  const p2=prompt('Type the same password again to confirm.');
+  if(p2===null) return;
+  if(p1!==p2) return alert('The two passwords did not match. Nothing was created.');
+  window._settingUpAdmin=true;
+  try{
+    const cred=await firebase.auth().createUserWithEmailAndPassword(ADMIN_EMAIL_2, p1);
+    const uid=cred.user.uid;
+    await firebase.auth().signOut().catch(()=>{});
+    window._settingUpAdmin=false;
+    _showNewAdminUid(uid);
+  }catch(e){
+    window._settingUpAdmin=false;
+    if(e?.code==='auth/email-already-in-use'){
+      alert('The second admin account already exists.\n\nType its password in the box and tap Enter.');
+    } else if(e?.code==='auth/operation-not-allowed'){
+      alert('Email/Password sign-in is switched off.\n\nFirebase Console → Authentication → Sign-in method → Email/Password → Enable. Then try again.');
+    } else if(e?.code==='auth/network-request-failed'){
+      alert('No connection to Google\'s login service. Try again on a better connection.');
+    } else {
+      alert('Could not create the account: '+(e?.message||e?.code));
     }
   }
-  console.warn('Firebase Auth failed after 3 attempts, trying backup password:', lastAuthErr?.code, lastAuthErr?.message);
+}
 
-  // Backup: Firestore-stored password (Settings → Backup Admin Password).
-  let stored='aarinat2024';
-  try{const doc=await db.collection('admin_settings').doc('main').get();if(doc.exists&&doc.data().adminPassword)stored=doc.data().adminPassword;}catch(e){}
-  if(pwd!==stored){
-    errEl.textContent='Incorrect password. (Tried Firebase Auth and the backup password — neither matched. If you know Firebase Auth is right and this is a network issue, try again on a different connection.)';
-    errEl.style.display='block';
-    btn.textContent='🔓 Enter'; btn.disabled=false;
-    return;
-  }
-  _cachedPwd = pwd;   // cache so background retry and _ensureFirebaseAuth can use it
-  localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
-  $('login-screen').style.display='none';
-  $('main-app').style.display='block';
-  // Show warning — Firebase Auth is not active, so direct Firestore writes need a retry
-  _showBackupAuthBanner();
-  _startBgAuthRetry(pwd);
-  SQ.ping();
-  await initAdmin();
-  btn.textContent='🔓 Enter'; btn.disabled=false;
+function _showNewAdminUid(uid){
+  const rule=
+`    function isBayo() {
+      return request.auth != null
+          && (request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2'
+           || request.auth.uid == '${uid}');
+    }`;
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;padding:1rem;';
+  wrap.innerHTML=`<div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:1.25rem;max-width:520px;width:100%;color:#e2e8f0;font-size:0.9rem;line-height:1.5;">
+    <div style="font-size:1.1rem;font-weight:700;margin-bottom:0.5rem;">✅ Admin account created</div>
+    <div style="margin-bottom:0.75rem;">One last step. In Firebase Console → Firestore → Rules, replace the <b>isBayo()</b> function at the top with this, then tap Publish:</div>
+    <pre id="new-admin-rule" style="background:#020617;border-radius:8px;padding:0.75rem;font-size:0.72rem;white-space:pre-wrap;word-break:break-all;margin:0 0 0.75rem;"></pre>
+    <button id="copy-admin-rule" style="width:100%;padding:0.7rem;border:none;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;margin-bottom:0.5rem;">📋 Copy rule</button>
+    <div style="font-size:0.78rem;color:#94a3b8;margin-bottom:0.75rem;">After publishing, log in here with the password you just chose.</div>
+    <button id="close-admin-rule" style="width:100%;padding:0.6rem;border:1px solid #334155;border-radius:10px;background:transparent;color:#e2e8f0;">Done</button>
+  </div>`;
+  document.body.appendChild(wrap);
+  wrap.querySelector('#new-admin-rule').textContent=rule;
+  wrap.querySelector('#copy-admin-rule').onclick=async()=>{
+    try{ await navigator.clipboard.writeText(rule); wrap.querySelector('#copy-admin-rule').textContent='✅ Copied'; }
+    catch(_){ alert('Copy failed — long-press the text above to copy it.'); }
+  };
+  wrap.querySelector('#close-admin-rule').onclick=()=>wrap.remove();
 }
 
 function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');localStorage.removeItem('ad_auth_time');firebase.auth().signOut().catch(()=>{});if(pendingUnsub)pendingUnsub();location.reload();}
@@ -196,7 +254,7 @@ async function _handleGoogleAuthResult(user) {
   if (!user) return;
   const btn   = document.getElementById('google-btn');
   const errEl = document.getElementById('l-err');
-  if (user.email !== ADMIN_EMAIL && user.email !== ADMIN_GOOGLE_EMAIL) {
+  if (!ADMIN_EMAILS.includes(user.email)) {
     await firebase.auth().signOut().catch(() => {});
     if (errEl) { errEl.textContent = `Wrong Google account. Sign in as ${ADMIN_GOOGLE_EMAIL}.`; errEl.style.display = 'block'; }
     if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.childNodes[1].textContent = ' Sign in with Google'; }
@@ -218,34 +276,19 @@ async function _handleGoogleAuthResult(user) {
 // Tries to (re-)establish Firebase Auth so Firestore rules pass.
 // Order: 1) already signed in  2) silent email re-auth (cached pwd)  3) anonymous fallback
 async function _ensureFirebaseAuth() {
-  if (firebase.auth().currentUser) return true;
-
-  // 1. Try email/password re-auth if we have a cached password
-  if (_cachedPwd) {
-    for (let i = 1; i <= 3; i++) {
-      try {
-        await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, _cachedPwd);
-        console.log('✅ Firebase Auth re-established silently (attempt', i, ')');
-        _removeBgAuthBanner();
-        return true;
-      } catch(e) {
-        if (e.code !== 'auth/network-request-failed' || i === 3) break;
-        await new Promise(r => setTimeout(r, 2000 * i));
-      }
+  if (firebase.auth().currentUser && !firebase.auth().currentUser.isAnonymous) return true;
+  if (!_cachedPwd) return false;
+  for (let i = 1; i <= 3; i++) {
+    try {
+      await firebase.auth().signInWithEmailAndPassword(_adminEmail, _cachedPwd);
+      console.log('✅ Firebase Auth re-established silently (attempt', i, ')');
+      _removeBgAuthBanner();
+      return true;
+    } catch(e) {
+      if (e.code !== 'auth/network-request-failed' || i === 3) break;
+      await new Promise(r => setTimeout(r, 2000 * i));
     }
   }
-
-  // 2. Anonymous fallback — works for collections whose rules only check
-  //    request.auth != null (e.g. admin_deals create). Will NOT satisfy
-  //    UID-locked rules (admin_approved_schools, admin_settings etc.).
-  try {
-    await firebase.auth().signInAnonymously();
-    console.log('⚠️ Signed in anonymously — only non-UID-locked writes will succeed');
-    return true;  // Partial auth is better than none
-  } catch(e) {
-    console.warn('[_ensureFirebaseAuth] anonymous auth also failed:', e.code);
-  }
-
   return false;
 }
 
@@ -256,7 +299,7 @@ function _startBgAuthRetry(pwd) {
   _bgAuthRetry = setInterval(async () => {
     if (firebase.auth().currentUser) { clearInterval(_bgAuthRetry); _bgAuthRetry=null; _removeBgAuthBanner(); return; }
     try {
-      await firebase.auth().signInWithEmailAndPassword(ADMIN_EMAIL, pwd);
+      await firebase.auth().signInWithEmailAndPassword(_adminEmail, pwd);
       clearInterval(_bgAuthRetry); _bgAuthRetry=null;
       _cachedPwd = pwd;
       _removeBgAuthBanner();
@@ -266,7 +309,7 @@ function _startBgAuthRetry(pwd) {
         // Wrong password — stop retrying, it will never self-correct
         clearInterval(_bgAuthRetry); _bgAuthRetry = null;
         const bannerEl = document.getElementById('backup-auth-warn');
-        if (bannerEl) bannerEl.textContent = '⚠️ Firebase Auth password is wrong. Tap Logout → Forgot Password → reset adebayoadesanya423@gmail.com to your admin password → log back in.';
+        if (bannerEl) bannerEl.textContent = '⚠️ Login session expired. Tap Logout and log back in with your admin password.';
       }
       // Network errors: keep retrying every 30 s
     }
@@ -280,7 +323,7 @@ function _showBackupAuthBanner() {
   const bar = document.createElement('div');
   bar.id = 'backup-auth-warn';
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#d97706;color:#fff;font-size:0.78rem;text-align:center;padding:6px 12px;letter-spacing:0.02em;';
-  bar.textContent = '⚠️ Firebase Auth password mismatch — approvals may fail. Fix: tap Logout, then use "Forgot Password" on the login screen to reset adebayoadesanya423@gmail.com to match your admin password. Then log back in.';
+  bar.textContent = '⚠️ Connection to Google\'s login service dropped. Reconnecting in the background — if an approval fails, wait 30 s and tap Re-Apply Approval.';
   document.body.prepend(bar);
 }
 function _removeBgAuthBanner() {
@@ -313,7 +356,7 @@ async function initAdmin(){
       await db.collection('admin_agents').add({name:'Grace Okonkwo',phone:'2348098765432',commission:5000,joinedAt:new Date()});
     }
     const sd=await db.collection('admin_settings').doc('main').get();
-    if(!sd.exists)await db.collection('admin_settings').doc('main').set({adminPassword:'aarinat2024',defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Edu-BLOOM!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
+    if(!sd.exists)await db.collection('admin_settings').doc('main').set({defaultSchoolPassword:'bloom2026',autoCAC:'full',whatsappTemplate:'*Welcome to Edu-BLOOM!* 🎉\n\nYour school has been activated.\n\n*School ID:* {{schoolId}}\n*Password:* {{password}}\n*Portal:* https://school.edubloom.com.ng\n\nLog in and start recovering your fees.\n– AariNAT Admin'});
     const cac=await db.collection('admin_cac').doc('progress').get();
     if(!cac.exists)await db.collection('admin_cac').doc('progress').set({raised:0});
     // demo pending deal
@@ -692,7 +735,7 @@ async function confirmApproval(){
   } catch(writeErr) {
     const isPermDenied = writeErr?.code === 'permission-denied';
     const errMsg = isPermDenied
-      ? 'Firebase login session unavailable — Google\'s auth service is currently unreachable on this network. The approval is ready; click "Re-Apply Approval" in 30 seconds to retry once the connection recovers.'
+      ? 'Your login session is not active. Tap Logout, log back in with your admin password, then tap "Re-Apply Approval" on this deal.'
       : (writeErr?.message || String(writeErr));
     alert(`⚠️ APPROVAL FAILED — deal not updated.\n\n${errMsg}\n\n📋 WRITE THESE DOWN:\nSchool ID: ${schoolId}\nPassword: ${password}\n\nClick "Re-Apply Approval" on this deal to retry once back online.`);
     // Queue the schoolId update so the stuck-deal banner and Re-Apply button appear
@@ -2047,7 +2090,6 @@ async function loadSettings(){
       const activeCount=[d.groqApiKey,d.groqApiKey2,d.groqApiKey3,d.groqApiKey4,d.groqApiKey5].filter(k=>k&&k.startsWith('gsk_')).length;
       const kcEl=$('groq-key-count'); if(kcEl) kcEl.textContent=activeCount+' key'+(activeCount===1?'':'s')+' active';
       if(d.hfApiKey&&$('s-hf'))$('s-hf').value=d.hfApiKey.slice(0,6)+'••••••'+d.hfApiKey.slice(-4);
-      if(d.adminPassword&&$('s-adminpwd'))$('s-adminpwd').placeholder='●'.repeat(Math.min(d.adminPassword.length,12))+' (set — type to change)';
     }
   }catch(e){}
 }
@@ -2066,11 +2108,8 @@ async function saveSettings(){
   const groqKey3=groqRaw3.startsWith('gsk_')&&groqRaw3.length>20?groqRaw3:'';
   const groqKey4=groqRaw4.startsWith('gsk_')&&groqRaw4.length>20?groqRaw4:'';
   const groqKey5=groqRaw5.startsWith('gsk_')&&groqRaw5.length>20?groqRaw5:'';
-  const newAdminPwd=($('s-adminpwd')?.value||'').trim();
-  if(newAdminPwd && newAdminPwd.length<4) return alert('Backup admin password must be at least 4 characters.');
-  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(groqKey2?{groqApiKey2:groqKey2}:{}),...(groqKey3?{groqApiKey3:groqKey3}:{}),...(groqKey4?{groqApiKey4:groqKey4}:{}),...(groqKey5?{groqApiKey5:groqKey5}:{}),...(hfKey?{hfApiKey:hfKey}:{}),...(newAdminPwd?{adminPassword:newAdminPwd}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
+  SQ.push({t:'saveSettings',d:{...(gk?{geminiKey:gk}:{}),...(groqKey?{groqApiKey:groqKey}:{}),...(groqKey2?{groqApiKey2:groqKey2}:{}),...(groqKey3?{groqApiKey3:groqKey3}:{}),...(groqKey4?{groqApiKey4:groqKey4}:{}),...(groqKey5?{groqApiKey5:groqKey5}:{}),...(hfKey?{hfApiKey:hfKey}:{}),defaultSchoolPassword:$('s-schoolpwd').value,autoCAC:$('s-cac').value,whatsappTemplate:$('s-tpl').value,updatedAt:new Date()}});
   if(groqKey||hfKey) await syncOcrKeysToPublic();
-  if($('s-adminpwd')) $('s-adminpwd').value='';
   alert('✅ Settings saved!');
   log('⚙️ Settings updated');
 }
@@ -2212,7 +2251,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const EIGHT_HOURS = 8 * 60 * 60 * 1000;
     const localValid = authRaw === '1' && (Date.now() - authTime) < EIGHT_HOURS;
 
-    if (user && (user.email === ADMIN_EMAIL || user.email === ADMIN_GOOGLE_EMAIL)) {
+    if (window._settingUpAdmin) return;  // ignore the brief sign-in during account creation
+    if (user && !user.isAnonymous && ADMIN_EMAILS.includes(user.email)) {
+      if (user.email === ADMIN_EMAIL_2) _adminEmail = ADMIN_EMAIL_2;
       // Firebase Auth is live and it's Bayo's account — refresh the localStorage
       // session timestamp so the 8-hour window restarts from now.
       _cachedPwd = '';
@@ -2221,13 +2262,6 @@ document.addEventListener('DOMContentLoaded', () => {
       $('login-screen').style.display = 'none';
       $('main-app').style.display    = 'block';
       _removeBgAuthBanner();
-      initAdmin();
-    } else if (localValid) {
-      // localStorage session is still within 8 hours but Firebase Auth lapsed.
-      // Show the app in backup mode — background retry will attempt to restore auth.
-      $('login-screen').style.display = 'none';
-      $('main-app').style.display    = 'block';
-      _showBackupAuthBanner();
       initAdmin();
     } else {
       // No valid session at all — show login screen.
