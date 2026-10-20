@@ -113,7 +113,8 @@ async function doLogin(){
     } catch(authErr) {
       lastAuthErr = authErr;
       const retryable = authErr?.code === 'auth/network-request-failed' || authErr?.code === 'auth/too-many-requests';
-      if (!retryable || attempt === 3) break;
+      const wrongPwd   = authErr?.code === 'auth/wrong-password' || authErr?.code === 'auth/invalid-credential' || authErr?.code === 'auth/user-not-found';
+      if (!retryable || wrongPwd || attempt === 3) break;
       btn.textContent = `🔄 Retrying (${attempt}/3)…`;
       await new Promise(r => setTimeout(r, 2000 * attempt)); // 2s, 4s
     }
@@ -256,7 +257,15 @@ function _startBgAuthRetry(pwd) {
       _cachedPwd = pwd;
       _removeBgAuthBanner();
       console.log('✅ Background Firebase Auth succeeded — full write access restored');
-    } catch(e) { /* keep retrying every 30 s */ }
+    } catch(e) {
+      if (e?.code === 'auth/wrong-password' || e?.code === 'auth/invalid-credential') {
+        // Wrong password — stop retrying, it will never self-correct
+        clearInterval(_bgAuthRetry); _bgAuthRetry = null;
+        const bannerEl = document.getElementById('backup-auth-warn');
+        if (bannerEl) bannerEl.textContent = '⚠️ Firebase Auth password is wrong. Tap Logout → Forgot Password → reset adebayoadesanya423@gmail.com to your admin password → log back in.';
+      }
+      // Network errors: keep retrying every 30 s
+    }
   }, 30000);
 }
 
@@ -267,7 +276,7 @@ function _showBackupAuthBanner() {
   const bar = document.createElement('div');
   bar.id = 'backup-auth-warn';
   bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#d97706;color:#fff;font-size:0.78rem;text-align:center;padding:6px 12px;letter-spacing:0.02em;';
-  bar.textContent = '⚠️ Logged in via backup password — Google login unavailable. Approval writes are retrying in the background. Try approving again in 30 s if it fails.';
+  bar.textContent = '⚠️ Firebase Auth password mismatch — approvals may fail. Fix: tap Logout, then use "Forgot Password" on the login screen to reset adebayoadesanya423@gmail.com to match your admin password. Then log back in.';
   document.body.prepend(bar);
 }
 function _removeBgAuthBanner() {
