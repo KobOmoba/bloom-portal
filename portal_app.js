@@ -148,7 +148,10 @@ async function forgotPassword(){
   const errEl=$('l-err');
   if(!confirm(`Send a password reset link to ${ADMIN_EMAIL}?`)) return;
   try{
-    await firebase.auth().sendPasswordResetEmail(ADMIN_EMAIL);
+    // handleCodeInApp:true returns a short dynamic link instead of the standard
+    // one-click URL — harder for Android Gmail to silently consume via prefetch.
+    const _acs = { url: 'https://portal.edubloom.com.ng', handleCodeInApp: false };
+    await firebase.auth().sendPasswordResetEmail(ADMIN_EMAIL, _acs);
     if(errEl){errEl.style.color='var(--money)';errEl.textContent='✅ Reset link sent to '+ADMIN_EMAIL+' — check your inbox (and spam folder).';errEl.style.display='block';}
   }catch(e){
     if(errEl){errEl.style.color='var(--danger)';errEl.textContent='Could not send reset email: '+(e.message||e);errEl.style.display='block';}
@@ -167,7 +170,8 @@ async function doGoogleLogin() {
   if (errEl) errEl.style.display = 'none';
 
   const provider = new firebase.auth.GoogleAuthProvider();
-  provider.setCustomParameters({ login_hint: ADMIN_GOOGLE_EMAIL, prompt: 'select_account' });
+  // hint both accepted accounts — ADMIN_EMAIL owns the Firebase project (correct UID)
+  provider.setCustomParameters({ login_hint: ADMIN_EMAIL, prompt: 'select_account' });
 
   // Use redirect directly — popup causes state mismatch on mobile Chrome
   // (Chrome Custom Tab is a separate context; sessionStorage state is lost on return).
