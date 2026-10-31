@@ -112,7 +112,11 @@ async function doLogin(){
   for (const email of [ADMIN_EMAIL_2]) {
     for (let attempt=1; attempt<=3; attempt++) {
       try {
-        await firebase.auth().signInWithEmailAndPassword(email, pwd);
+        // Never hang on "Checking...": give the login service 20 s per attempt.
+        await Promise.race([
+          firebase.auth().signInWithEmailAndPassword(email, pwd),
+          new Promise((_, rej) => setTimeout(() => rej({ code: 'auth/network-request-failed' }), 20000))
+        ]);
         _cachedPwd=pwd; _adminEmail=email;
         localStorage.setItem('ad_auth','1'); localStorage.setItem('ad_auth_time', Date.now().toString());
         $('login-screen').style.display='none';
@@ -230,10 +234,19 @@ async function doGoogleLogin() {
   // Use redirect directly — popup causes state mismatch on mobile Chrome
   // (Chrome Custom Tab is a separate context; sessionStorage state is lost on return).
   // getRedirectResult() in the boot block captures the result on page reload.
+  // Popup first: on mobile Chrome a redirect to the firebaseapp.com auth page
+  // often comes back with no user (third-party storage is partitioned), which
+  // made the button look dead. Fall back to redirect only if popups are blocked.
   try {
-    await firebase.auth().signInWithRedirect(provider);
+    const res = await firebase.auth().signInWithPopup(provider);
+    if (res && res.user) await _handleGoogleAuthResult(res.user);
   } catch(e) {
+    const c = e?.code || '';
+    if (c === 'auth/popup-blocked' || c === 'auth/operation-not-supported-in-this-environment') {
+      try { await firebase.auth().signInWithRedirect(provider); return; } catch (e2) { e = e2; }
+    }
     if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+    if (c === 'auth/popup-closed-by-user' || c === 'auth/cancelled-popup-request') return;
     if (errEl) { errEl.textContent = 'Google sign-in failed: ' + (e.message || e.code); errEl.style.display = 'block'; }
   }
 }
