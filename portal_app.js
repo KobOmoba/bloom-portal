@@ -17,6 +17,24 @@ const ADMIN_GOOGLE_EMAIL = 'aarinat.company.limited@gmail.com'; // Google Sign-I
 const ADMIN_EMAIL_2      = 'portal-admin@edubloom.com.ng';
 const ADMIN_EMAILS       = [ADMIN_EMAIL_2, ADMIN_GOOGLE_EMAIL];
 
+// Opens WhatsApp. Chrome blocks pop-ups opened after a wait (e.g. after saving
+// to Firestore), so if it is blocked we show a big button the admin taps instead.
+function openWA(url){
+  let w=null; try{ w=window.open(url,'_blank'); }catch(e){}
+  if(w) return;
+  let box=document.getElementById('wa-fallback');
+  if(!box){ box=document.createElement('div'); box.id='wa-fallback';
+    box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:99999;display:flex;align-items:center;justify-content:center;padding:1rem;';
+    document.body.appendChild(box); }
+  box.innerHTML='<div style="background:#0f172a;border:1px solid #334155;border-radius:14px;padding:1.25rem;max-width:360px;width:100%;text-align:center;color:#f1f5f9;">'
+    +'<div style="font-weight:800;margin-bottom:.5rem;">📲 Send on WhatsApp</div>'
+    +'<p style="font-size:.85rem;color:#94a3b8;margin-bottom:1rem;">Tap the button to send the message.</p>'
+    +'<a id="wa-fallback-link" target="_blank" rel="noopener" style="display:block;background:#16a34a;color:#fff;font-weight:800;padding:.85rem;border-radius:10px;text-decoration:none;margin-bottom:.6rem;">Open WhatsApp</a>'
+    +'<button onclick="document.getElementById(\'wa-fallback\').remove()" style="background:none;border:none;color:#94a3b8;">Close</button></div>';
+  const a=document.getElementById('wa-fallback-link'); a.href=url; a.onclick=()=>setTimeout(()=>box.remove(),300);
+}
+
+
 // ── Pricing (flat) — single source of truth for the portal ───────────────
 const FLAT_PRICE         = 15000; // school pays per term
 const AGENT_NEW_COMM     = 5000;  // per new school approved
@@ -825,7 +843,7 @@ async function openApproveModal(dealId){
       '</div></div>'
     : '<div style="margin-top:0.4rem;font-size:0.75rem;color:#f59e0b;">⚠️ No AI-scanned names — students will need manual entry.</div>';
 
-  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;line-height:1.8;">\n    <div><b>School:</b> ${esc(deal.school?.name)}</div>\n    <div><b>Principal WhatsApp:</b> ${esc(deal.school?.phone)}</div>\n    <div><b>Students:</b> ${deal.school?.studentCount||0} (agent reported)</div>\n    <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>\n    <div><b>Agent:</b> ${esc(deal.agent?.name)} · ${esc(deal.agent?.phone)}</div>\n    ${scannedPreview}\n  </div>`;
+  $('ap-preview').innerHTML=`<div style="background:#080f1a;padding:0.75rem;border-radius:8px;font-size:0.85rem;line-height:1.8;">\n    <div><b>School:</b> ${esc(deal.school?.name)}</div>\n    <div><b>Principal WhatsApp:</b> ${esc(deal.school?.phone)}</div>\n    <div><b>Students:</b> ${deal.school?.studentCount||0} (agent reported)</div>\n    <div><b>Tier:</b> ${esc(deal.tier?.name)} · ${fmt(deal.tier?.price)}/term</div>\n    <div><b>Agent:</b> ${esc(deal.agent?.name)} · ${esc(deal.agent?.phone)}</div>\n    ${scannedPreview}\n  </div>\n  <div style="margin-top:0.6rem;background:rgba(245,158,11,0.12);border:1px solid #f59e0b;border-radius:8px;padding:0.7rem;font-size:0.85rem;"><div><b>Terms agent entered:</b> ${deal.terms||1} term(s)</div><div><b>Amount the school must pay:</b> <span style="font-size:1.05rem;font-weight:800;color:#f59e0b;">${fmt((deal.terms||1)*(deal.tier?.price||0))}</span></div><label style="display:flex;gap:8px;align-items:flex-start;margin-top:0.5rem;cursor:pointer;"><input type="checkbox" id="ap-paid-ok" style="margin-top:3px;"> <span>I have checked: the school paid <b>${fmt((deal.terms||1)*(deal.tier?.price||0))}</b> for <b>${deal.terms||1} term(s)</b>.</span></label></div>`;
   $('ap-id').textContent=schoolId;
   const schoolPwd=_genSchoolPassword();
   try{ localStorage.setItem('ad_pwd_'+dealId, JSON.stringify({schoolId,pwd:schoolPwd})); }catch(_){}
@@ -836,6 +854,8 @@ async function openApproveModal(dealId){
 
 async function confirmApproval(){
   if(!approvalData)return;
+  const _paidOk=document.getElementById('ap-paid-ok');
+  if(_paidOk && !_paidOk.checked){ alert('Please confirm the payment first.\n\nCheck that the school paid for the number of terms shown, then tick the box.'); return; }
   const{id,deal,schoolId,password}=approvalData;
   // ── Flat commission: ₦5,000 per new school onboarded ────────────────────
   const commission = AGENT_NEW_COMM;
@@ -977,7 +997,7 @@ async function confirmApproval(){
     // 6. WhatsApp credentials
     const tpl=sd.exists?(sd.data().whatsappTemplate||''):'';
     const msg=tpl.replace(/{{schoolId}}/g,schoolId).replace(/{{password}}/g,password);
-    window.open(`https://wa.me/${(deal.school?.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
+    openWA(`https://wa.me/${(deal.school?.phone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
   }catch(e){console.warn('CAC/WA:',e);}
 
   await log(`✅ Approved: ${deal.school?.name} → ${schoolId} · ${fmt(commission)} commission`);
@@ -1063,7 +1083,7 @@ function sendRenewalReminder(schoolId, schoolName, agentPhone, principalPhone, d
     `Please collect the renewal fee and send payment confirmation to Bayo.\n\n` +
     `Tier renewal → contact: wa.me/2348145073941`
   );
-  window.open(`https://wa.me/${(agentPhone||'').replace(/\D/g,'')}?text=${agentMsg}`, '_blank');
+  openWA(`https://wa.me/${(agentPhone||'').replace(/\D/g,'')}?text=${agentMsg}`);
 }
 
 // Mark a school as renewed — extend expiry by N terms
@@ -1355,7 +1375,7 @@ async function resetPrincipalPassword(schoolId, schoolName, principalPhone){
 
     if(confirm(`✅ New password: ${newPwd}\n\nSend it to the Principal via WhatsApp now?`)){
       const msg = `Hello,\n\nYour Edu-BLOOM school password has been reset.\n\nSchool ID: ${schoolId}\nNew Password: ${newPwd}\n\nLogin at: https://school.edubloom.com.ng\n\n– AariNAT Admin`;
-      window.open(`https://wa.me/${(principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
+      openWA(`https://wa.me/${(principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
     }
   }catch(e){
     alert('Reset failed: '+(e.message||e));
@@ -1370,7 +1390,7 @@ async function resend(schoolId){
     const sd=await db.collection('admin_settings').doc('main').get().catch(()=>null);
     const tpl=sd?.exists?(sd.data().whatsappTemplate||''):'School ID: {{schoolId}}\nPassword: {{password}}';
     const msg=tpl.replace(/{{schoolId}}/g,schoolId).replace(/{{password}}/g,s.password);
-    window.open(`https://wa.me/${(s.principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
+    openWA(`https://wa.me/${(s.principalPhone||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
   }catch(e){alert('Failed.');}
 }
 
@@ -1506,7 +1526,7 @@ You earn *₦5,000* for every school approved, plus *₦2,500* every term it ren
 GIVE YOUR SCHOOL THE PREMIUM EXPERIENCE 💜
 – AariNAT Company Limited`;
 
-    window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(welcomeMsg)}`, '_blank');
+    openWA(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(welcomeMsg)}`);
     log(`✅ Approved agent: ${name} (${phone})`);
     // Auto-generate and show the agent's ID card
     setTimeout(() => showAgentIDCard({ name, phone, state: state||'', photo: r.photo||'', bankName: r.bankName||'', acctNum: r.acctNum||'', acctName: r.acctName||'' }, agentDocId), 600);
@@ -1803,7 +1823,7 @@ async function rejectAgentRequest(reqId, name, phone){
 
     if(reason){
       const msg = `Hello ${name}, thank you for your interest in becoming an Edu-BLOOM agent.\n\nUnfortunately we cannot approve your request at this time.\n\n${reason ? 'Reason: ' + reason + '\n\n' : ''}You are welcome to reapply in the future.\n\n– AariNAT Company`;
-      window.open(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`, '_blank');
+      openWA(`https://wa.me/${phone.replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`);
     }
 
     log(`❌ Rejected agent request: ${name} (${phone})`);
@@ -2003,7 +2023,7 @@ async function saveAgent(){
       `_Edu-BLOOM by AariNAT_`;
 
     if(confirm(`✅ Agent "${name}" added!\n\nSend them a WhatsApp activation message now?\n(They need this to know how to log in.)`)){
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(activationMsg)}`,'_blank');
+      openWA(`https://wa.me/${phone}?text=${encodeURIComponent(activationMsg)}`);
     }
   }catch(e){
     alert('Failed to save: '+(e.message||'Unknown error. Try again.'));
@@ -2034,7 +2054,7 @@ async function resendAgentActivation(agentId){
     `Commission: ₦5,000 per new school, plus ₦2,500 every term it renews.\n\n` +
     `Questions? Call Bayo: *+234 814 507 3941*\n\n` +
     `_Edu-BLOOM by AariNAT_`;
-  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`,'_blank');
+  openWA(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
 }
 
 
