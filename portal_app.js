@@ -9,14 +9,13 @@ try{
     .catch(err=>{ if(err.code!=='failed-precondition'&&err.code!=='unimplemented') console.warn('Persistence:',err.code); });
 }catch(e){console.warn('FB:',e);}
 
-// Real Firebase Auth admin account — created 25 July 2026, tried first on login.
-// Firestore rule for admin_settings checks this exact account's UID.
-const ADMIN_EMAIL        = 'adebayoadesanya423@gmail.com';   // email/password Firebase Auth
+// Admin logins. Firestore isBayo() trusts exactly these two (Oct 2026):
+// the Google Sign-In account and the portal-admin password account.
 const ADMIN_GOOGLE_EMAIL = 'aarinat.company.limited@gmail.com'; // Google Sign-In account
 // Second admin — real Firebase Auth account, password chosen by Bayo via
 // 'Set up admin password' on the login screen. Its UID is added to isBayo() in the rules.
 const ADMIN_EMAIL_2      = 'portal-admin@edubloom.com.ng';
-const ADMIN_EMAILS       = [ADMIN_EMAIL, ADMIN_EMAIL_2, ADMIN_GOOGLE_EMAIL];
+const ADMIN_EMAILS       = [ADMIN_EMAIL_2, ADMIN_GOOGLE_EMAIL];
 
 // ── Pricing (flat) — single source of truth for the portal ───────────────
 const FLAT_PRICE         = 15000; // school pays per term
@@ -28,7 +27,7 @@ let pendingUnsub=null;
 let approvalData=null;
 let _cachedPwd='';        // held in memory only — never written to localStorage
 let _bgAuthRetry=null;    // setInterval handle for background Firebase Auth retry
-let _adminEmail=ADMIN_EMAIL; // which admin account the cached password belongs to
+let _adminEmail=ADMIN_EMAIL_2; // which admin account the cached password belongs to
 
 // ── Sync Queue ─────────────────────────────────────────────────────────────
 const SQ={
@@ -107,10 +106,10 @@ async function doLogin(){
   if(!pwd){ errEl.textContent='Enter your admin password.'; errEl.style.display='block'; return; }
   btn.textContent='Checking...'; btn.disabled=true;
 
-  // Real Firebase Auth only. Tries the main admin account, then the second
-  // admin account. No hardcoded backup password — rules need a real login.
+  // Real Firebase Auth only (portal-admin account). No hardcoded backup
+  // password — rules need a real login. Google Sign-In is the other way in.
   let lastErr=null, networkFail=false;
-  for (const email of [ADMIN_EMAIL, ADMIN_EMAIL_2]) {
+  for (const email of [ADMIN_EMAIL_2]) {
     for (let attempt=1; attempt<=3; attempt++) {
       try {
         await firebase.auth().signInWithEmailAndPassword(email, pwd);
@@ -209,13 +208,13 @@ function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth
 
 async function forgotPassword(){
   const errEl=$('l-err');
-  if(!confirm(`Send a password reset link to ${ADMIN_EMAIL}?`)) return;
+  if(!confirm(`Send a password reset link to ${ADMIN_EMAIL_2}?`)) return;
   try{
     // handleCodeInApp:true returns a short dynamic link instead of the standard
     // one-click URL — harder for Android Gmail to silently consume via prefetch.
     const _acs = { url: 'https://portal.edubloom.com.ng', handleCodeInApp: false };
-    await firebase.auth().sendPasswordResetEmail(ADMIN_EMAIL, _acs);
-    if(errEl){errEl.style.color='var(--money)';errEl.textContent='✅ Reset link sent to '+ADMIN_EMAIL+' — check your inbox (and spam folder).';errEl.style.display='block';}
+    await firebase.auth().sendPasswordResetEmail(ADMIN_EMAIL_2, _acs);
+    if(errEl){errEl.style.color='var(--money)';errEl.textContent='✅ Reset link sent to '+ADMIN_EMAIL_2+' — check your inbox (and spam folder).';errEl.style.display='block';}
   }catch(e){
     if(errEl){errEl.style.color='var(--danger)';errEl.textContent='Could not send reset email: '+(e.message||e);errEl.style.display='block';}
   }
@@ -233,8 +232,7 @@ async function doGoogleLogin() {
   if (errEl) errEl.style.display = 'none';
 
   const provider = new firebase.auth.GoogleAuthProvider();
-  // hint both accepted accounts — ADMIN_EMAIL owns the Firebase project (correct UID)
-  provider.setCustomParameters({ login_hint: ADMIN_EMAIL, prompt: 'select_account' });
+  provider.setCustomParameters({ login_hint: ADMIN_GOOGLE_EMAIL, prompt: 'select_account' });
 
   // Use redirect directly — popup causes state mismatch on mobile Chrome
   // (Chrome Custom Tab is a separate context; sessionStorage state is lost on return).
