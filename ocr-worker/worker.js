@@ -1,4 +1,4 @@
-// EduBloom OCR reader — Cloudflare Worker (v3, Nov 2026)
+// EduBloom OCR reader — Cloudflare Worker (v4, Nov 2026)
 // Holds the AI keys as Cloudflare secrets so the apps never see them.
 // Secrets: GEMINI_API_KEY (required), GROQ_API_KEY (optional backup).
 // Routes (POST JSON {image: <base64>, mime: "image/jpeg"}):
@@ -48,7 +48,11 @@ function parseJSON(text) {
 async function callGemini(env, prompt, image, mime) {
   if (!env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not set');
   let last = 'no model tried';
-  for (const model of GEMINI_MODELS) {
+  // Gemini is sometimes "busy" (503): go through the models twice, pausing between rounds.
+  const attempts = [...GEMINI_MODELS, ...GEMINI_MODELS];
+  for (let i = 0; i < attempts.length; i++) {
+    const model = attempts[i];
+    if (i === GEMINI_MODELS.length) await new Promise(r => setTimeout(r, 2500));
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
@@ -92,7 +96,7 @@ export default {
     const origin = req.headers.get('Origin') || '';
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors(origin) });
     const route = new URL(req.url).pathname.replace(/^\/+/, '');
-    if (req.method === 'GET') return json({ name: 'EduBloom OCR', version: 3, engines: ['gemini', 'groq'] }, 200, origin);
+    if (req.method === 'GET') return json({ name: 'EduBloom OCR', version: 4, engines: ['gemini', 'groq'] }, 200, origin);
     if (!ALLOWED.includes(origin)) return json({ error: 'origin not allowed' }, 403, origin);
     if (!PROMPTS[route]) return json({ error: 'unknown route' }, 404, origin);
 
