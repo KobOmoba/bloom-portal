@@ -1,63 +1,127 @@
 rules_version = '2';
+// EduBloom Firestore rules. Built on the live rules of 2026-10-31
+// (live-2026-10-31.rules) with the gaps fixed. Tested in rules.test.mjs.
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
-    function isAdmin() {
-      return signedIn() && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    // ── Helper functions ──────────────────────────────────────────────────
+    function isBayo() {
+      return request.auth != null
+          && (request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2'
+           || request.auth.uid == 'jNVAaR2VXsUHmxq0b68joOvh7b72');
     }
-    function email() { return signedIn() ? request.auth.token.email : ''; }
-    function isAgent() { return email().matches('agent-.*@agents[.]edubloom[.]com[.]ng'); }
-    function isSchool(sid) {
-      return email() == sid.lower() + '@schools.edubloom.com.ng';
+    function authed() { return request.auth != null; }
+    function email()  { return authed() && request.auth.token.email is string ? request.auth.token.email : ''; }
+    function isAgent() { return email().matches('agent-[0-9]+@agents[.]edubloom[.]com[.]ng'); }
+    // The school's own login (<school id>@schools.edubloom.com.ng) acts as its Principal
+    function isSchoolLogin(schoolId) {
+      return email() == schoolId.lower() + '@schools.edubloom.com.ng';
+    }
+    function staffDoc(schoolId) {
+      return /databases/$(database)/documents/schools/$(schoolId)/staff_directory/$(request.auth.uid);
+    }
+    function isStaffOf(schoolId)       { return authed() && exists(staffDoc(schoolId)); }
+    function staffData(schoolId)       { return get(staffDoc(schoolId)).data; }
+    function myRole(schoolId)          { return staffData(schoolId).role; }
+    function myClass(schoolId)         { return staffData(schoolId).assignedClass; }
+    function mySubjects(schoolId)      { return staffData(schoolId).assignedSubjects; }
+    function isPrincipal(schoolId) {
+      return isSchoolLogin(schoolId) || isBayo()
+          || (isStaffOf(schoolId) && myRole(schoolId) in ['Principal', 'Proprietor']);
+    }
+    function isBursar(schoolId)        { return isStaffOf(schoolId) && myRole(schoolId) == 'Bursar'; }
+    function isClassTeacher(schoolId)  { return isStaffOf(schoolId) && myRole(schoolId) == 'Class Teacher'; }
+    function isSubjectTeacher(schoolId){ return isStaffOf(schoolId) && myRole(schoolId) == 'Subject Teacher'; }
+    function isSchoolMember(schoolId)  { return isPrincipal(schoolId) || isStaffOf(schoolId); }
+    function studentClass(schoolId, studentId) {
+      return get(/databases/$(database)/documents/schools/$(schoolId)/students/$(studentId)).data.class;
     }
 
-    // Teachers and bursars have their own logins; the Principal (school login) adds them
-    // to schools/{sid}/staff_directory/{uid}. Being on that list = staff of that school.
-    function isStaff(sid) {
-      return signedIn() &&
-        exists(/databases/$(database)/documents/schools/$(sid)/staff_directory/$(request.auth.uid));
+    // ── Bayo-only ─────────────────────────────────────────────────────────
+    match /admin_settings/{doc}         { allow read, write: if isBayo(); }
+    match /admin_activity/{doc}         { allow read, write: if isBayo(); }
+    match /admin_cac/{doc}              { allow read, write: if isBayo(); }
+    match /admin_agent_pins/{doc}       { allow read, write: if isBayo(); }
+    match /v2_deals/{doc}               { allow read, write: if isBayo(); }
+    match /admin_approved_schools/{doc} { allow read, write: if isBayo(); }
+
+    // ── Public forms (no login yet) ───────────────────────────────────────
+    match /admin_alerts/{doc} {
+      allow create:               if true;
+      allow read, update, delete: if isBayo();
+    }
+    match /admin_agent_requests/{doc} {
+      allow create:               if true;
+      allow read, update, delete: if isBayo();
     }
 
-    // ── School data: that school's Principal login, its staff, or Bayo ──
-    match /schools/{sid} {
-      allow read, write: if isSchool(sid) || isStaff(sid) || isAdmin();
+    // ── Agents (agents now sign in with phone + PIN) ──────────────────────
+    match /admin_agents/{doc} {
+      allow read:  if isAgent() || isBayo();
+      allow write: if isBayo();
+    }
+    match /admin_deals/{doc} {
+      allow read, create:   if isAgent() || isBayo();
+      allow update, delete: if isBayo();
+    }
+    match /admin_deal_students/{doc} {
+      allow create:               if isAgent() || isBayo();
+      allow read, update, delete: if isBayo();
+    }
+    match /admin_ledger/{doc} {
+      allow read:  if isAgent() || isBayo();
+      allow write: if isBayo();
+    }
 
-      // Only the Principal or Bayo can add/remove staff or change roles.
-      // A staff member may read their own record (needed at login).
+    // ── Shared lookups: any signed-in user, Bayo writes ───────────────────
+    match /public_ocr_keys/{doc}     { allow read: if authed(); allow write: if isBayo(); }
+    match /admin_opportunities/{doc} { allow read: if authed(); allow write: if isBayo(); }
+    match /admin_booklist/{doc}      { allow read: if authed(); allow write: if isBayo(); }
+    match /admin_uniforms/{doc}      { allow read: if authed(); allow write: if isBayo(); }
+
+    // ── Schools ───────────────────────────────────────────────────────────
+    match /schools/{schoolId} {
+      allow read, write: if isSchoolMember(schoolId);
+
+      // Only the Principal / school login / Bayo add or change staff.
+      // Staff read their own record at login.
       match /staff_directory/{uid} {
-        allow read: if isSchool(sid) || isAdmin() || (signedIn() && request.auth.uid == uid);
-        allow write: if isSchool(sid) || isAdmin();
+        allow read:  if isPrincipal(schoolId) || (authed() && request.auth.uid == uid);
+        allow write: if isPrincipal(schoolId);
       }
 
-      match /{coll}/{rest=**} {
-        allow read, write: if coll != 'staff_directory' &&
-          (isSchool(sid) || isStaff(sid) || isAdmin());
+      // App storage folders (Oct 2026 split storage)
+      match /data/{doc}             { allow read, write: if isSchoolMember(schoolId); }
+      match /attendance/{doc}       { allow read, write: if isSchoolMember(schoolId); }
+      match /payment_receipts/{doc} { allow read, write: if isPrincipal(schoolId) || isBursar(schoolId); }
+
+      match /students/{studentId} {
+        allow read: if isPrincipal(schoolId)
+                    || (isClassTeacher(schoolId) && myClass(schoolId) == resource.data.class)
+                    || isSubjectTeacher(schoolId)
+                    || isBursar(schoolId);
+        allow create:         if isPrincipal(schoolId) || isClassTeacher(schoolId);
+        allow update, delete: if isPrincipal(schoolId)
+                              || (isClassTeacher(schoolId) && myClass(schoolId) == resource.data.class);
+
+        match /private/fees {
+          allow read, write: if isPrincipal(schoolId) || isBursar(schoolId);
+        }
+
+        match /scores/{scoreId} {
+          allow read: if isPrincipal(schoolId)
+                      || (isClassTeacher(schoolId) && myClass(schoolId) == studentClass(schoolId, studentId))
+                      || (isSubjectTeacher(schoolId) && resource.data.subject in mySubjects(schoolId));
+          allow write: if isPrincipal(schoolId)
+                       || (isClassTeacher(schoolId) && myClass(schoolId) == studentClass(schoolId, studentId))
+                       || (isSubjectTeacher(schoolId) && request.resource.data.subject in mySubjects(schoolId));
+        }
       }
     }
 
-    // ── Agent-facing (Phase 2: limit each agent to their own records) ──
-    match /admin_agents/{id}        { allow read: if isAgent() || isAdmin(); allow write: if isAdmin(); }
-    match /admin_deals/{id}         { allow read, create: if isAgent() || isAdmin(); allow update, delete: if isAdmin(); }
-    match /admin_deal_students/{id} { allow create: if isAgent() || isAdmin(); allow read, update, delete: if isAdmin(); }
-    match /admin_ledger/{id}        { allow read: if isAgent() || isAdmin(); allow write: if isAdmin(); }
-    match /admin_opportunities/{id} { allow read: if isAgent() || isAdmin(); allow write: if isAdmin(); }
-
-    // ── Shared lookups ──
-    match /public_ocr_keys/{id}     { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /admin_booklist/{id}      { allow read: if signedIn(); allow write: if isAdmin(); }
-    match /admin_uniforms/{id}      { allow read: if signedIn(); allow write: if isAdmin(); }
-
-    // ── Public forms (no login yet) ──
-    match /admin_agent_requests/{id} { allow create: if true; allow read, update, delete: if isAdmin(); }
-    match /admin_alerts/{id}         { allow create: if true; allow read, update, delete: if isAdmin(); }
-
-    // ── Admin only ──
-    match /admin_settings/{id}         { allow read, write: if isAdmin(); }
-    match /admin_cac/{id}              { allow read, write: if isAdmin(); }
-    match /admin_activity/{id}         { allow read, write: if isAdmin(); }
-    match /admin_approved_schools/{id} { allow read, write: if isAdmin(); }
-    match /admin_agent_pins/{id}       { allow read, write: if isAdmin(); }
-
+    // ── Default deny ──────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

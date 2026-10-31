@@ -18,6 +18,7 @@ const as = {
   schoolB:  () => env.authenticatedContext('uidB', { email: 'eb-b02@schools.edubloom.com.ng' }).firestore(),
   agent:    () => env.authenticatedContext('uidAg', { email: 'agent-2348000000001@agents.edubloom.com.ng' }).firestore(),
   // Someone who made their own Firebase account with a look-alike email
+  bursarA:  () => env.authenticatedContext('uidBu', { email: 'bursar@gmail.com' }).firestore(),
   teacherA: () => env.authenticatedContext('uidT', { email: 'mrs.ade@gmail.com' }).firestore(),
   // A real login who is not on any staff list (e.g. removed teacher)
   outsider: () => env.authenticatedContext('uidX', { email: 'someone@gmail.com' }).firestore(),
@@ -27,7 +28,7 @@ const as = {
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: 'edubloom-rules-lab',
-    firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 },
+    firestore: { rules: readFileSync(process.env.RULES || 'firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 },
   });
 });
 after(async () => { await env.cleanup(); });
@@ -38,10 +39,11 @@ beforeEach(async () => {
     const db = ctx.firestore();
     // School document IDs are stored in upper case, logins in lower case
     await setDoc(doc(db, 'schools/EB-A01'), { name: 'School A' });
-    await setDoc(doc(db, 'schools/EB-A01/students/s1'), { name: 'Pupil' });
+    await setDoc(doc(db, 'schools/EB-A01/students/s1'), { name: 'Pupil', class: 'JSS1' });
     await setDoc(doc(db, 'schools/EB-A01/students/s1/private/fees'), { balance: 5000 });
     await setDoc(doc(db, 'schools/EB-B02'), { name: 'School B' });
-    await setDoc(doc(db, 'schools/EB-A01/staff_directory/uidT'), { role: 'Class Teacher', email: 'mrs.ade@gmail.com' });
+    await setDoc(doc(db, 'schools/EB-A01/staff_directory/uidT'), { role: 'Class Teacher', assignedClass: 'JSS1', email: 'mrs.ade@gmail.com' });
+    await setDoc(doc(db, 'schools/EB-A01/staff_directory/uidBu'), { role: 'Bursar', email: 'bursar@gmail.com' });
     await setDoc(doc(db, 'admin_agents/a1'), { phone: '2348000000001' });
     await setDoc(doc(db, 'admin_deals/d1'), { status: 'approved' });
     await setDoc(doc(db, 'admin_ledger/l1'), { agentPhone: '2348000000001' });
@@ -134,7 +136,22 @@ test('teacher on school A staff list can log in and use school A data', async ()
   await assertSucceeds(getDoc(doc(db, 'schools/EB-A01/staff_directory/uidT')));
   await assertSucceeds(getDoc(doc(db, 'schools/EB-A01')));
   await assertSucceeds(getDoc(doc(db, 'schools/EB-A01/students/s1')));
-  await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/students/s1/scores/Term1_Maths'), { exam: 60 }));
+  await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/students/s1/scores/Term1_Maths'), { exam: 60, subject: 'Maths' }));
+  await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/attendance/2026-11'), { days: {} }));
+  await assertSucceeds(getDoc(doc(db, 'schools/EB-A01/data/students')));
+});
+test('class teacher cannot see fees; bursar can', async () => {
+  await assertFails(getDoc(doc(as.teacherA(), 'schools/EB-A01/students/s1/private/fees')));
+  await assertSucceeds(getDoc(doc(as.bursarA(), 'schools/EB-A01/students/s1/private/fees')));
+});
+test('ATTACK: a stranger login cannot make itself Principal of a school', async () => {
+  await assertFails(setDoc(doc(as.outsider(), 'schools/EB-A01/staff_directory/uidX'), { role: 'Principal' }));
+});
+test('school login saves its data folders', async () => {
+  const db = as.schoolA();
+  await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/data/students'), { v: [] }));
+  await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/attendance/2026-11'), { days: {} }));
+  await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/payment_receipts/r1'), { amt: 1 }));
 });
 test('teacher cannot promote themself or add staff', async () => {
   const db = as.teacherA();
