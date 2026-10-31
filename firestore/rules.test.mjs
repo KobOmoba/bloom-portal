@@ -22,6 +22,9 @@ const as = {
   teacherA: () => env.authenticatedContext('uidT', { email: 'mrs.ade@gmail.com' }).firestore(),
   // A real login who is not on any staff list (e.g. removed teacher)
   outsider: () => env.authenticatedContext('uidX', { email: 'someone@gmail.com' }).firestore(),
+  googleAdmin: () => env.authenticatedContext('uidG', { email: 'aarinat.company.limited@gmail.com', email_verified: true, firebase: { sign_in_provider: 'google.com' } }).firestore(),
+  // Same email but via password sign-up, not verified by Google
+  fakeGoogleAdmin: () => env.authenticatedContext('uidFG', { email: 'aarinat.company.limited@gmail.com', email_verified: false, firebase: { sign_in_provider: 'password' } }).firestore(),
   faker:    () => env.authenticatedContext('uidF', { email: 'eb-a01@schools.edubloom.com.ng.evil.com' }).firestore(),
 };
 
@@ -169,4 +172,15 @@ test('Principal (school login) can add and remove staff', async () => {
   const db = as.schoolA();
   await assertSucceeds(setDoc(doc(db, 'schools/EB-A01/staff_directory/uidNew'), { role: 'Bursar' }));
   await assertSucceeds(deleteDoc(doc(db, 'schools/EB-A01/staff_directory/uidT')));
+});
+
+test('admin via Google sign-in (aarinat.company.limited) can load agents, ledger, deals', async () => {
+  const db = as.googleAdmin();
+  await assertSucceeds(getDoc(doc(db, 'admin_agents/a1')));
+  await assertSucceeds(getDoc(doc(db, 'admin_ledger/l1')));
+  await assertSucceeds(getDoc(doc(db, 'admin_settings/main')));
+});
+test('ATTACK: same email made with a password (not Google-verified) is not admin', async () => {
+  await assertFails(getDoc(doc(as.fakeGoogleAdmin(), 'admin_settings/main')));
+  await assertFails(getDoc(doc(as.fakeGoogleAdmin(), 'admin_approved_schools/EB-A01')));
 });

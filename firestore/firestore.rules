@@ -8,7 +8,10 @@ service cloud.firestore {
     function isBayo() {
       return request.auth != null
           && (request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2'
-           || request.auth.uid == 'jNVAaR2VXsUHmxq0b68joOvh7b72');
+           || request.auth.uid == 'jNVAaR2VXsUHmxq0b68joOvh7b72'   // portal-admin@edubloom.com.ng
+           || (request.auth.token.email == 'aarinat.company.limited@gmail.com'
+               && request.auth.token.email_verified == true
+               && request.auth.token.firebase.sign_in_provider == 'google.com'));
     }
     function authed() { return request.auth != null; }
     function email()  { return authed() && request.auth.token.email is string ? request.auth.token.email : ''; }
