@@ -207,17 +207,10 @@ function _showNewAdminUid(uid){
 function logout(){if(!confirm('Logout?'))return;localStorage.removeItem('ad_auth');localStorage.removeItem('ad_auth_time');firebase.auth().signOut().catch(()=>{});if(pendingUnsub)pendingUnsub();location.reload();}
 
 async function forgotPassword(){
+  // portal-admin@edubloom.com.ng has no real mailbox, so a reset email would go
+  // nowhere. Google Sign-In is the recovery path for the admin.
   const errEl=$('l-err');
-  if(!confirm(`Send a password reset link to ${ADMIN_EMAIL_2}?`)) return;
-  try{
-    // handleCodeInApp:true returns a short dynamic link instead of the standard
-    // one-click URL — harder for Android Gmail to silently consume via prefetch.
-    const _acs = { url: 'https://portal.edubloom.com.ng', handleCodeInApp: false };
-    await firebase.auth().sendPasswordResetEmail(ADMIN_EMAIL_2, _acs);
-    if(errEl){errEl.style.color='var(--money)';errEl.textContent='✅ Reset link sent to '+ADMIN_EMAIL_2+' — check your inbox (and spam folder).';errEl.style.display='block';}
-  }catch(e){
-    if(errEl){errEl.style.color='var(--danger)';errEl.textContent='Could not send reset email: '+(e.message||e);errEl.style.display='block';}
-  }
+  if(errEl){errEl.style.color='var(--money)';errEl.textContent='🔑 Forgot the password? Tap "Sign in with Google" and choose '+ADMIN_GOOGLE_EMAIL+'. Google handles your password recovery.';errEl.style.display='block';}
 }
 
 // ── Google Sign-In ──────────────────────────────────────────────────────────
