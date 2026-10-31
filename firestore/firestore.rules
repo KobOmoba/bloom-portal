@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && request.auth.uid == 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+    }
+    function email() { return signedIn() ? request.auth.token.email : ''; }
+    function isAgent() { return email().matches('agent-.*@agents[.]edubloom[.]com[.]ng'); }
+    function isSchool(sid) {
+      return email() == sid.lower() + '@schools.edubloom.com.ng';
+    }
+
+    // ── School data: only that school, or Bayo ──
+    match /schools/{sid} {
+      allow read, write: if isSchool(sid) || isAdmin();
+      match /{rest=**} {
+        allow read, write: if isSchool(sid) || isAdmin();
+      }
+    }
+
+    // ── Agent-facing (Phase 2: limit each agent to their own records) ──
+    match /admin_agents/{id}        { allow read: if isAgent() || isAdmin(); allow write: if isAdmin(); }
+    match /admin_deals/{id}         { allow read, create: if isAgent() || isAdmin(); allow update, delete: if isAdmin(); }
+    match /admin_deal_students/{id} { allow create: if isAgent() || isAdmin(); allow read, update, delete: if isAdmin(); }
+    match /admin_ledger/{id}        { allow read: if isAgent() || isAdmin(); allow write: if isAdmin(); }
+    match /admin_opportunities/{id} { allow read: if isAgent() || isAdmin(); allow write: if isAdmin(); }
+
+    // ── Shared lookups ──
+    match /public_ocr_keys/{id}     { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /admin_booklist/{id}      { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /admin_uniforms/{id}      { allow read: if signedIn(); allow write: if isAdmin(); }
+
+    // ── Public forms (no login yet) ──
+    match /admin_agent_requests/{id} { allow create: if true; allow read, update, delete: if isAdmin(); }
+    match /admin_alerts/{id}         { allow create: if true; allow read, update, delete: if isAdmin(); }
+
+    // ── Admin only ──
+    match /admin_settings/{id}         { allow read, write: if isAdmin(); }
+    match /admin_cac/{id}              { allow read, write: if isAdmin(); }
+    match /admin_activity/{id}         { allow read, write: if isAdmin(); }
+    match /admin_approved_schools/{id} { allow read, write: if isAdmin(); }
+    match /admin_agent_pins/{id}       { allow read, write: if isAdmin(); }
+
+  }
+}
