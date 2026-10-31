@@ -8,7 +8,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, addDoc } from 'firebase/firestore';
 
-const ADMIN_UID = 'HSpdm2NYK4hEGqBxyTPEi2wy39F2';
+const ADMIN_UID = 'jNVAaR2VXsUHmxq0b68joOvh7b72'; // portal-admin@edubloom.com.ng
 let env;
 
 const as = {
@@ -183,4 +183,10 @@ test('admin via Google sign-in (aarinat.company.limited) can load agents, ledger
 test('ATTACK: same email made with a password (not Google-verified) is not admin', async () => {
   await assertFails(getDoc(doc(as.fakeGoogleAdmin(), 'admin_settings/main')));
   await assertFails(getDoc(doc(as.fakeGoogleAdmin(), 'admin_approved_schools/EB-A01')));
+});
+
+test('old admin login adebayoadesanya423 (HSpdm…) is no longer admin', async () => {
+  const db = env.authenticatedContext('HSpdm2NYK4hEGqBxyTPEi2wy39F2', { email: 'adebayoadesanya423@gmail.com' }).firestore();
+  await assertFails(getDoc(doc(db, 'admin_settings/main')));
+  await assertFails(getDoc(doc(db, 'admin_approved_schools/EB-A01')));
 });
