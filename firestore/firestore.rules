@@ -12,11 +12,27 @@ service cloud.firestore {
       return email() == sid.lower() + '@schools.edubloom.com.ng';
     }
 
-    // ── School data: only that school, or Bayo ──
+    // Teachers and bursars have their own logins; the Principal (school login) adds them
+    // to schools/{sid}/staff_directory/{uid}. Being on that list = staff of that school.
+    function isStaff(sid) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/schools/$(sid)/staff_directory/$(request.auth.uid));
+    }
+
+    // ── School data: that school's Principal login, its staff, or Bayo ──
     match /schools/{sid} {
-      allow read, write: if isSchool(sid) || isAdmin();
-      match /{rest=**} {
-        allow read, write: if isSchool(sid) || isAdmin();
+      allow read, write: if isSchool(sid) || isStaff(sid) || isAdmin();
+
+      // Only the Principal or Bayo can add/remove staff or change roles.
+      // A staff member may read their own record (needed at login).
+      match /staff_directory/{uid} {
+        allow read: if isSchool(sid) || isAdmin() || (signedIn() && request.auth.uid == uid);
+        allow write: if isSchool(sid) || isAdmin();
+      }
+
+      match /{coll}/{rest=**} {
+        allow read, write: if coll != 'staff_directory' &&
+          (isSchool(sid) || isStaff(sid) || isAdmin());
       }
     }
 
