@@ -321,7 +321,7 @@
     <div class="mhead"><h3>➕ Add Agent</h3><button class="mclose" onclick="closeM('add-agent-modal')">×</button></div>
     <label>Full Name</label><input type="text" id="ag-name" placeholder="e.g. Grace Okonkwo">
     <label>WhatsApp Number</label><input type="tel" id="ag-phone" placeholder="2348012345678">
-    <label>Commission Rate (%)</label><input type="number" id="ag-rate" value="20" min="0" max="100">
+    <p style="font-size:0.78rem;color:var(--sub);">Commission: flat ₦5,000 per new school + ₦2,500 per renewal.</p><input type="hidden" id="ag-rate" value="20" min="0" max="100">
     <button id="add-agent-btn" class="btn-b" onclick="saveAgent()">💾 Add Agent</button>
   </div>
 </div>
@@ -341,7 +341,7 @@
   </div>
 </div>
 
-<script src="portal_app.js?v=20261031-wa-pay"></script>
+<script src="portal_app.js?v=20261101-comm-log"></script>
 
 <!-- Edit Agent Modal -->
 <div class="modal" id="edit-agent-modal">
@@ -352,8 +352,8 @@
     <input class="inp" id="edit-ag-name" placeholder="Full Name">
     <label class="lbl">WhatsApp Number</label>
     <input class="inp" id="edit-ag-phone" placeholder="08012345678">
-    <label class="lbl">Commission Rate (%)</label>
-    <input class="inp" type="number" id="edit-ag-rate" value="20" min="0" max="100">
+    <p style="font-size:0.78rem;color:var(--sub);">Commission: flat ₦5,000 per new school + ₦2,500 per renewal.</p>
+    <input class="inp" type="hidden" id="edit-ag-rate" value="20" min="0" max="100">
     <button class="btn-b" id="edit-ag-btn" onclick="saveEditAgent()">💾 Save Changes</button>
     <button class="btn-ghost" style="color:white;margin-top:0.4rem;" onclick="closeM('edit-agent-modal')">Cancel</button>
   </div>
