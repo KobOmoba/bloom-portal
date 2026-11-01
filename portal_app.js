@@ -59,7 +59,11 @@ const SQ={
     if(ok&&this.q.length)this.run();
   },
   async run(){
+    // Re-entrancy guard: overlapping runs snapshot the same in-flight ops and
+    // execute them twice (non-idempotent .add() → duplicate activity logs).
+    if(this._running){this._again=true;return;}
     if(!db||!navigator.onLine||!this.q.length)return;
+    this._running=true;this._again=false;
     const items=[...this.q];
     for(const item of items){
       try{
@@ -74,7 +78,9 @@ const SQ={
         }
       }
     }
+    this._running=false;
     this.save();this.ping();
+    if(this._again)this.run();
   },
   async exec(op){
     const t=op.t;
@@ -1713,7 +1719,7 @@ function finishCard(ctx, canvas, agent, agentId, W, H, photoX, photoY, photoR, g
     { icon: '🪪', label: 'Agent ID',   value: agentId },
     { icon: '📱', label: 'WhatsApp',   value: agent.phone },
     { icon: '📍', label: 'Territory',  value: (agent.state || '—') + ' State' },
-    { icon: '💰', label: 'Commission', value: '20% per school' },
+    { icon: '💰', label: 'Commission', value: fmt(AGENT_NEW_COMM) + ' per school' },
   ];
   let dy = 200;
   details.forEach(d => {
@@ -1868,7 +1874,7 @@ function renderAgentsFromData(agents, ledger, deals){
            <button class="btn-w btn-sm" onclick="resetAgentPin('${a.id}')">🔑 New PIN</button>
            <button class="btn-sm" style="background:#f59e0b;color:#000;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;font-weight:700;" onclick="deactivateAgent('${a.id}','${esc(a.name)}')">🚫 Deactivate</button>
            <button class="btn-sm" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:0.74rem;cursor:pointer;" onclick="deleteAgent('${a.id}','${esc(a.name)}')">🗑️ Remove</button>`;
-      return`<div class="deal" style="border-left:3px solid ${borderColor};${cardStyle}">\n        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">${photoHtml}<div style="flex:1;min-width:0;"><div class="dn">${esc(a.name)}${statusBadge}</div><div class="dm">📱 ${a.phone} · 📍 ${esc(a.state||'—')} · ${a.commission||20}% commission</div></div></div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        ${a.bankName?`<div class="dm" style="font-size:0.72rem;color:var(--sub);">🏦 ${esc(a.bankName)} · ${esc(a.acctNum||'—')} · ${esc(a.acctName||'—')}</div>`:''}\n        ${isDeactivated?`<div class="dm" style="font-size:0.72rem;color:#f87171;margin-top:2px;">🚫 Deactivated ${a.deactivatedAt?.toDate?a.deactivatedAt.toDate().toLocaleDateString():''} · Commission HALTED</div>`:''}\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">${actionBtns}</div>\n      </div>`;
+      return`<div class="deal" style="border-left:3px solid ${borderColor};${cardStyle}">\n        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">${photoHtml}<div style="flex:1;min-width:0;"><div class="dn">${esc(a.name)}${statusBadge}</div><div class="dm">📱 ${a.phone} · 📍 ${esc(a.state||'—')} · ${fmt(AGENT_NEW_COMM)} per school</div></div></div>\n        <div class="dm" style="color:var(--text);">Earned: ${fmt(earned)} · Paid out: ${fmt(paid)}</div>\n        ${a.bankName?`<div class="dm" style="font-size:0.72rem;color:var(--sub);">🏦 ${esc(a.bankName)} · ${esc(a.acctNum||'—')} · ${esc(a.acctName||'—')}</div>`:''}\n        ${isDeactivated?`<div class="dm" style="font-size:0.72rem;color:#f87171;margin-top:2px;">🚫 Deactivated ${a.deactivatedAt?.toDate?a.deactivatedAt.toDate().toLocaleDateString():''} · Commission HALTED</div>`:''}\n        <div class="dact" style="margin-top:6px;gap:5px;flex-wrap:wrap;">${actionBtns}</div>\n      </div>`;
     }).join('');
   const perf=$('agent-perf-body'); if(perf) perf.innerHTML=agents.map(a=>{
     const d=deals.filter(x=>x.agent?.name===a.name).length;
